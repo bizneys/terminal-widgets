@@ -32,16 +32,19 @@
                 return;
             }
 
-            // Deduplicate items by Ticker + Target Quarter to fix exact count issue (100)
+            // Strict cleanup: Filter out empty rows, whitespace-only tickers, or non-object items
             const seenKeys = new Set();
             rawUniverseData = data.filter(item => {
-                if (!item || (!item.ticker && !item.name)) return false;
-                
-                const uniqueKey = (item.ticker || item.name) + "_" + (item.target_quarter || "");
-                if (seenKeys.has(uniqueKey)) {
-                    return false;
-                }
+                if (!item || typeof item !== 'object') return false;
+                const ticker = item.ticker ? item.ticker.trim() : "";
+                const name = item.name ? item.name.trim() : "";
+                if (!ticker && !name) return false;
+
+                // Unique key check by ticker + target_quarter
+                const uniqueKey = ticker + "_" + (item.target_quarter || "");
+                if (seenKeys.has(uniqueKey)) return false;
                 seenKeys.add(uniqueKey);
+
                 return true;
             });
 
@@ -102,7 +105,7 @@
         const selectedQuarter = quarterSelect ? quarterSelect.value : "ALL";
         if (quarterInfoElem) quarterInfoElem.innerText = selectedQuarter !== "ALL" ? selectedQuarter : "Multi-Quarter";
 
-        // Display equal weight and clear specific ticker text
+        // Display equal weight percentage
         const sampleHolding = data[0];
         if (maxWeightElem && sampleHolding) {
             maxWeightElem.innerText = sampleHolding.weight !== undefined && sampleHolding.weight !== null ? (sampleHolding.weight * 100).toFixed(2) + "%" : "-";
