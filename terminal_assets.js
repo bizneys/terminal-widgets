@@ -592,16 +592,24 @@ function syncAssetMainZoom(min, max) {
     }
 }
 
+/* ---- Helper to ensure dataset is strictly ordered by timestamp ---- */
+function getSortedData(data) {
+    if (!data || !data.length) return [];
+    return [...data].sort((a, b) => a.x - b.x);
+}
+
 /* ---- Main Panel: Price + Moving Averages ---- */
 function renderAssetMainChart(data, viewMin, viewMax) {
     const ctx = document.getElementById('assetMainCanvas').getContext('2d');
     if (assetMainChartInstance) assetMainChartInstance.destroy();
 
-    // Absolute boundaries based on raw full dataset
-    const absoluteMin = assetRawSeries.length ? assetRawSeries[0].x : data[0].x;
-    const absoluteMax = assetRawSeries.length ? assetRawSeries[assetRawSeries.length - 1].x : data[data.length - 1].x;
+    const sortedData = getSortedData(data);
+    const sortedRaw = getSortedData(assetRawSeries.length ? assetRawSeries : sortedData);
 
-    // Viewport boundaries (default to full range if not specified)
+    // Absolute timestamps based on true sorted bounds
+    const absoluteMin = sortedRaw[0].x;
+    const absoluteMax = sortedRaw[sortedRaw.length - 1].x;
+
     const minTimestamp = viewMin !== undefined ? viewMin : absoluteMin;
     const maxTimestamp = viewMax !== undefined ? viewMax : absoluteMax;
 
@@ -609,10 +617,10 @@ function renderAssetMainChart(data, viewMin, viewMax) {
         type: 'line',
         data: {
             datasets: [
-                { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
-                { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
+                { label: 'Adj Close', data: sortedData.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
+                { label: 'MA20', data: sortedData.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
+                { label: 'MA50', data: sortedData.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
+                { label: 'MA200', data: sortedData.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
             ]
         },
         options: {
@@ -629,10 +637,8 @@ function renderAssetMainChart(data, viewMin, viewMax) {
             scales: {
                 x: {
                     type: 'time',
-                    suggestedMin: absoluteMin, // Ensures chart scale spans full data limit
-                    suggestedMax: absoluteMax,
-                    min: minTimestamp,          // Current visible viewport start
-                    max: maxTimestamp,          // Current visible viewport end
+                    min: minTimestamp,
+                    max: maxTimestamp,
                     ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
                     grid: { display: true, color: '#f1f5f9' },
                     afterFit: (axis) => { axis.height = 0; }
@@ -722,9 +728,11 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
 
     renderSubTabLegend(tab);
 
-    // Absolute boundaries based on raw full dataset
-    const absoluteMin = assetRawSeries.length ? assetRawSeries[0].x : data[0].x;
-    const absoluteMax = assetRawSeries.length ? assetRawSeries[assetRawSeries.length - 1].x : data[data.length - 1].x;
+    const sortedData = getSortedData(data);
+    const sortedRaw = getSortedData(assetRawSeries.length ? assetRawSeries : sortedData);
+
+    const absoluteMin = sortedRaw[0].x;
+    const absoluteMax = sortedRaw[sortedRaw.length - 1].x;
 
     let currentMin = viewMin;
     let currentMax = viewMax;
@@ -743,7 +751,7 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
 
     assetSubChartInstance = new Chart(ctx, {
         type: baseType,
-        data: { datasets: buildSubDatasets(data, tab) },
+        data: { datasets: buildSubDatasets(sortedData, tab) },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -758,8 +766,6 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
             scales: {
                 x: {
                     type: 'time',
-                    suggestedMin: absoluteMin, // Ensures scale bounds cover full series
-                    suggestedMax: absoluteMax,
                     min: currentMin,
                     max: currentMax,
                     ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
@@ -789,7 +795,6 @@ window.setAssetSubTab = function(tab, btnElem) {
     document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
     
-    // Maintain current main chart view boundaries during sub-tab switch
     let currentMin, currentMax;
     if (assetMainChartInstance && assetMainChartInstance.scales.x) {
         currentMin = assetMainChartInstance.scales.x.min;
@@ -802,8 +807,9 @@ window.setAssetSubTab = function(tab, btnElem) {
 /* ---- Shared Range / Zoom Controls ---- */
 window.resetAssetChartZoom = function() {
     if (!assetRawSeries.length) return;
-    const minTimestamp = assetRawSeries[0].x;
-    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+    const sortedRaw = getSortedData(assetRawSeries);
+    const minTimestamp = sortedRaw[0].x;
+    const maxTimestamp = sortedRaw[sortedRaw.length - 1].x;
 
     if (assetMainChartInstance) {
         assetMainChartInstance.options.scales.x.min = minTimestamp;
@@ -827,7 +833,10 @@ window.setAssetTimeRange = function(range, btnElem) {
 
     if (!assetRawSeries.length) return;
 
-    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+    const sortedRaw = getSortedData(assetRawSeries);
+
+    // Get true latest data point
+    const maxTimestamp = sortedRaw[sortedRaw.length - 1].x;
     const latestDate = new Date(maxTimestamp);
     let startDate = new Date(latestDate);
 
@@ -835,13 +844,13 @@ window.setAssetTimeRange = function(range, btnElem) {
     else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
     else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
     else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-    else startDate = new Date(assetRawSeries[0].x);
+    else startDate = new Date(sortedRaw[0].x);
 
     const minTimestamp = startDate.getTime();
 
-    // Render using full raw series with strict view limits
-    renderAssetMainChart(assetRawSeries, minTimestamp, maxTimestamp);
-    renderAssetSubChart(assetRawSeries, currentSubTab, minTimestamp, maxTimestamp);
+    // Render with full sorted dataset and precise visible boundaries
+    renderAssetMainChart(sortedRaw, minTimestamp, maxTimestamp);
+    renderAssetSubChart(sortedRaw, currentSubTab, minTimestamp, maxTimestamp);
 };
 
 document.addEventListener("DOMContentLoaded", initScreener);
