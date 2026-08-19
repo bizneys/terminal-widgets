@@ -572,17 +572,30 @@
         });
     }
 
-    function syncAssetSubZoom(min, max) {
+ function syncAssetSubZoom(min, max) {
         if (assetSubChartInstance && assetSubChartInstance.scales.x) {
             assetSubChartInstance.options.scales.x.min = min;
             assetSubChartInstance.options.scales.x.max = max;
+
+            if (assetSubChartInstance.options.scales.y) {
+                assetSubChartInstance.options.scales.y.min = undefined;
+                assetSubChartInstance.options.scales.y.max = undefined;
+            }
+
             assetSubChartInstance.update('none');
         }
     }
+
     function syncAssetMainZoom(min, max) {
         if (assetMainChartInstance && assetMainChartInstance.scales.x) {
             assetMainChartInstance.options.scales.x.min = min;
             assetMainChartInstance.options.scales.x.max = max;
+
+            if (assetMainChartInstance.options.scales.y) {
+                assetMainChartInstance.options.scales.y.min = undefined;
+                assetMainChartInstance.options.scales.y.max = undefined;
+            }
+
             assetMainChartInstance.update('none');
         }
     }
