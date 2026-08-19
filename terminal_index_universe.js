@@ -32,8 +32,19 @@
                 return;
             }
 
-            // Filter out dummy or invalid empty rows to guarantee exact count (100)
-            rawUniverseData = data.filter(item => item && (item.ticker || item.name));
+            // Deduplicate items by Ticker + Target Quarter to fix exact count issue (100)
+            const seenKeys = new Set();
+            rawUniverseData = data.filter(item => {
+                if (!item || (!item.ticker && !item.name)) return false;
+                
+                const uniqueKey = (item.ticker || item.name) + "_" + (item.target_quarter || "");
+                if (seenKeys.has(uniqueKey)) {
+                    return false;
+                }
+                seenKeys.add(uniqueKey);
+                return true;
+            });
+
             renderUniverseGrid(rawUniverseData);
             populateQuarterDropdown(rawUniverseData);
         })
@@ -91,7 +102,7 @@
         const selectedQuarter = quarterSelect ? quarterSelect.value : "ALL";
         if (quarterInfoElem) quarterInfoElem.innerText = selectedQuarter !== "ALL" ? selectedQuarter : "Multi-Quarter";
 
-        // Equal weighting logic update: display equal weight percentage instead of top holding title
+        // Display equal weight and clear specific ticker text
         const sampleHolding = data[0];
         if (maxWeightElem && sampleHolding) {
             maxWeightElem.innerText = sampleHolding.weight !== undefined && sampleHolding.weight !== null ? (sampleHolding.weight * 100).toFixed(2) + "%" : "-";
