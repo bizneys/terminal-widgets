@@ -211,10 +211,10 @@
         if (nsiVal !== null && nsiVal !== undefined) {
             nsiValElem.innerText = nsiVal.toFixed(2);
 
-            if (nsiVal >= 0.75) {
+            if (nsiVal >= 0.70) {
                 nsiStatusElem.innerText = "High Sync";
                 nsiStatusElem.className = "kpi-change high";
-            } else if (nsiVal >= 0.45) {
+            } else if (nsiVal >= 0.30) {
                 nsiStatusElem.innerText = "Moderate";
                 nsiStatusElem.className = "kpi-change moderate";
             } else {
