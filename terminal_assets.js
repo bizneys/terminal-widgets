@@ -720,13 +720,18 @@
 
         renderSubTabLegend(tab);
 
-        // Get the current zoom range from the main chart if it has already been rendered
-        const currentMin = (assetMainChartInstance && assetMainChartInstance.scales.x)
-            ? assetMainChartInstance.scales.x.min
-            : data[0].x;
-        const currentMax = (assetMainChartInstance && assetMainChartInstance.scales.x)
-            ? assetMainChartInstance.scales.x.max
-            : data[data.length - 1].x;
+        // Get current zoom limits explicitly from main chart's options or scales
+        let currentMin = data[0].x;
+        let currentMax = data[data.length - 1].x;
+
+        if (assetMainChartInstance) {
+            currentMin = assetMainChartInstance.options.scales?.x?.min 
+                ?? assetMainChartInstance.scales?.x?.min 
+                ?? currentMin;
+            currentMax = assetMainChartInstance.options.scales?.x?.max 
+                ?? assetMainChartInstance.scales?.x?.max 
+                ?? currentMax;
+        }
 
         /* Volume reads better as bars; every other tab is a signed line series around zero. */
         const baseType = tab === 'volume' ? 'bar' : 'line';
@@ -748,8 +753,8 @@
                 scales: {
                     x: {
                         type: 'time',
-                        min: currentMin, // Apply current range of the main chart
-                        max: currentMax, // Apply current range of the main chart
+                        min: currentMin, // Apply active zoom level
+                        max: currentMax, // Apply active zoom level
                         ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
                         grid: { display: true, color: '#f1f5f9' }
                     },
@@ -766,6 +771,9 @@
                 }
             }
         });
+
+        // Force a sync update after creation to ensure Y-axis auto-scales to current X-range
+        assetSubChartInstance.update('none');
 
         attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
             syncAssetMainZoom(min, max);
