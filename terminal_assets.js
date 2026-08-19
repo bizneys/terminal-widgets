@@ -572,264 +572,253 @@
         });
     }
 
-    function syncAssetSubZoom(min, max) {
-        if (assetSubChartInstance && assetSubChartInstance.scales.x) {
-            assetSubChartInstance.options.scales.x.min = min;
-            assetSubChartInstance.options.scales.x.max = max;
-            assetSubChartInstance.update('none');
-        }
+function syncAssetSubZoom(min, max) {
+    if (assetSubChartInstance && assetSubChartInstance.scales.x) {
+        // Apply min/max simultaneously to both options and scales internal properties
+        assetSubChartInstance.options.scales.x.min = min;
+        assetSubChartInstance.options.scales.x.max = max;
+        assetSubChartInstance.scales.x.options.min = min;
+        assetSubChartInstance.scales.x.options.max = max;
+        assetSubChartInstance.update('none');
     }
+}
 
-    function syncAssetMainZoom(min, max) {
-        if (assetMainChartInstance && assetMainChartInstance.scales.x) {
-            assetMainChartInstance.options.scales.x.min = min;
-            assetMainChartInstance.options.scales.x.max = max;
-            assetMainChartInstance.update('none');
-        }
+function syncAssetMainZoom(min, max) {
+    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+        // Apply min/max simultaneously to both options and scales internal properties
+        assetMainChartInstance.options.scales.x.min = min;
+        assetMainChartInstance.options.scales.x.max = max;
+        assetMainChartInstance.scales.x.options.min = min;
+        assetMainChartInstance.scales.x.options.max = max;
+        assetMainChartInstance.update('none');
     }
+}
 
-    /* ---- Main Panel: Price + Moving Averages ---- */
-    function renderAssetMainChart(data) {
-        const ctx = document.getElementById('assetMainCanvas').getContext('2d');
-        if (assetMainChartInstance) assetMainChartInstance.destroy();
+/* ---- Main Panel: Price + Moving Averages ---- */
+function renderAssetMainChart(data) {
+    const ctx = document.getElementById('assetMainCanvas').getContext('2d');
+    if (assetMainChartInstance) assetMainChartInstance.destroy();
 
-        const minTimestamp = data[0].x;
-        const maxTimestamp = data[data.length - 1].x;
+    const minTimestamp = data[0].x;
+    const maxTimestamp = data[data.length - 1].x;
 
-        assetMainChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [
-                    { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
-                    { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
-                ]
+    assetMainChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [
+                { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
+                { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
+                { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
+                { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+                brandWatermark: { enabled: true }
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                interaction: { mode: 'index', intersect: false },
-                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false },
-                    brandWatermark: { enabled: true } /* Only stamped on the main chart to avoid visual clutter */
+            scales: {
+                x: {
+                    type: 'time',
+                    min: minTimestamp,
+                    max: maxTimestamp,
+                    ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                    grid: { display: true, color: '#f1f5f9' },
+                    afterFit: (axis) => { axis.height = 0; }
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        min: minTimestamp,
-                        max: maxTimestamp,
-                        /* Labels stay invisible on the main panel (dates are shown on the sub panel below),
-                           but color:'transparent' (instead of display:false) keeps real label-width
-                           measurement so autoSkip spacing matches the sub chart's gridlines. */
-                        ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
-                        grid: { display: true, color: '#f1f5f9' },
-                        afterFit: (axis) => { axis.height = 0; }
-                    },
-                    y: {
-                        position: 'right',
-                        grid: { display: true, color: '#f1f5f9' },
-                        ticks: { font: { size: 9 }, padding: 4 },
-                        afterFit: (axis) => { axis.width = 55; }
-                    }
+                y: {
+                    position: 'right',
+                    grid: { display: true, color: '#f1f5f9' },
+                    ticks: { font: { size: 9 }, padding: 4 },
+                    afterFit: (axis) => { axis.width = 55; }
                 }
             }
-        });
+        }
+    });
 
-        isMAVisible.forEach((visible, idx) => {
-            assetMainChartInstance.setDatasetVisibility(idx, visible);
-        });
-        assetMainChartInstance.update('none');
+    isMAVisible.forEach((visible, idx) => {
+        assetMainChartInstance.setDatasetVisibility(idx, visible);
+    });
+    assetMainChartInstance.update('none');
 
-        attachChartDragInteractions('assetMainCanvas', () => assetMainChartInstance, (min, max) => {
-            syncAssetSubZoom(min, max);
-        });
+    attachChartDragInteractions('assetMainCanvas', () => assetMainChartInstance, (min, max) => {
+        syncAssetSubZoom(min, max);
+    });
+}
+
+window.toggleMA = function(index) {
+    if (!assetMainChartInstance) return;
+    const isVisible = assetMainChartInstance.isDatasetVisible(index);
+    if (isVisible) {
+        assetMainChartInstance.hide(index);
+        isMAVisible[index] = false;
+    } else {
+        assetMainChartInstance.show(index);
+        isMAVisible[index] = true;
     }
+};
 
-    window.toggleMA = function(index) {
-        if (!assetMainChartInstance) return;
-        const isVisible = assetMainChartInstance.isDatasetVisible(index);
-        if (isVisible) {
-            assetMainChartInstance.hide(index);
-            isMAVisible[index] = false;
-        } else {
-            assetMainChartInstance.show(index);
-            isMAVisible[index] = true;
-        }
-    };
-
-    /* ---- Sub Panel: Premium / Exposures / Alpha / Volume (tab-switchable) ---- */
-    function buildSubDatasets(data, tab) {
-        if (tab === 'exposures') {
-            return [
-                { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
-                { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
-                { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
-                { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
-            ];
-        }
-        if (tab === 'alpha') {
-            return [
-                { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
-            ];
-        }
-        if (tab === 'volume') {
-            return [
-                { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
-            ];
-        }
+/* ---- Sub Panel: Premium / Exposures / Alpha / Volume (tab-switchable) ---- */
+function buildSubDatasets(data, tab) {
+    if (tab === 'exposures') {
         return [
-            { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
+            { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
+            { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
+            { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
+            { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
         ];
     }
+    if (tab === 'alpha') {
+        return [
+            { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
+        ];
+    }
+    if (tab === 'volume') {
+        return [
+            { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
+        ];
+    }
+    return [
+        { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
+    ];
+}
 
-    /* Reference lines per sub-tab:
-       - volume: none (bars already start at 0, an extra line adds no information)
-       - exposures / alpha: a single zero line (positive vs. negative territory)
-       - premium: narrative_premium is z-score normalized in the pipeline (mean 0, std 1 per
-         rebalance), so in addition to the zero line we mark +-1 as a rough "typical range"
-         band. If the methodology settles on different normalization bounds, update this array. */
-    function thresholdsForTab(tab) {
-        if (tab === 'volume') return [];
-        if (tab === 'premium') return [-1, 0, 1];
-        return [0];
+function thresholdsForTab(tab) {
+    if (tab === 'volume') return [];
+    if (tab === 'premium') return [-1, 0, 1];
+    return [0];
+}
+
+function renderSubTabLegend(tab) {
+    const legendEl = document.getElementById('subTabLegend');
+    if (tab === 'exposures') {
+        legendEl.innerHTML = `
+            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
+            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
+            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
+            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
+        `;
+    } else if (tab === 'premium') {
+        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
+    } else {
+        legendEl.innerHTML = '';
+    }
+}
+
+function renderAssetSubChart(data, tab) {
+    const ctx = document.getElementById('assetSubCanvas').getContext('2d');
+    if (assetSubChartInstance) assetSubChartInstance.destroy();
+
+    renderSubTabLegend(tab);
+
+    // Extract current visible X-axis min/max values from the main chart
+    let currentMin = data[0].x;
+    let currentMax = data[data.length - 1].x;
+
+    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+        currentMin = assetMainChartInstance.scales.x.min;
+        currentMax = assetMainChartInstance.scales.x.max;
     }
 
-    function renderSubTabLegend(tab) {
-        const legendEl = document.getElementById('subTabLegend');
-        if (tab === 'exposures') {
-            legendEl.innerHTML = `
-                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
-                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
-                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
-                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
-            `;
-        } else if (tab === 'premium') {
-            legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
-        } else {
-            legendEl.innerHTML = '';
-        }
-    }
+    const baseType = tab === 'volume' ? 'bar' : 'line';
 
-    function renderAssetSubChart(data, tab) {
-        const ctx = document.getElementById('assetSubCanvas').getContext('2d');
-        if (assetSubChartInstance) assetSubChartInstance.destroy();
-
-        renderSubTabLegend(tab);
-
-        // Get current zoom limits explicitly from main chart's options or scales
-        let currentMin = data[0].x;
-        let currentMax = data[data.length - 1].x;
-
-        if (assetMainChartInstance) {
-            currentMin = assetMainChartInstance.options.scales?.x?.min 
-                ?? assetMainChartInstance.scales?.x?.min 
-                ?? currentMin;
-            currentMax = assetMainChartInstance.options.scales?.x?.max 
-                ?? assetMainChartInstance.scales?.x?.max 
-                ?? currentMax;
-        }
-
-        /* Volume reads better as bars; every other tab is a signed line series around zero. */
-        const baseType = tab === 'volume' ? 'bar' : 'line';
-
-        assetSubChartInstance = new Chart(ctx, {
-            type: baseType,
-            data: { datasets: buildSubDatasets(data, tab) },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                interaction: { mode: 'index', intersect: false },
-                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false },
-                    thresholdLines: { lines: thresholdsForTab(tab) }
+    assetSubChartInstance = new Chart(ctx, {
+        type: baseType,
+        data: { datasets: buildSubDatasets(data, tab) },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+                thresholdLines: { lines: thresholdsForTab(tab) }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    min: currentMin, // Apply current min from the main chart
+                    max: currentMax, // Apply current max from the main chart
+                    ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                    grid: { display: true, color: '#f1f5f9' }
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        min: currentMin, // Apply active zoom level
-                        max: currentMax, // Apply active zoom level
-                        ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
-                        grid: { display: true, color: '#f1f5f9' }
+                y: {
+                    position: 'right',
+                    beginAtZero: tab === 'volume',
+                    grid: { display: true, color: '#f1f5f9' },
+                    ticks: {
+                        font: { size: 8 },
+                        callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
                     },
-                    y: {
-                        position: 'right',
-                        beginAtZero: tab === 'volume',
-                        grid: { display: true, color: '#f1f5f9' },
-                        ticks: {
-                            font: { size: 8 },
-                            callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
-                        },
-                        afterFit: (axis) => { axis.width = 55; }
-                    }
+                    afterFit: (axis) => { axis.width = 55; }
                 }
             }
-        });
+        }
+    });
 
-        // Force a sync update after creation to ensure Y-axis auto-scales to current X-range
-        assetSubChartInstance.update('none');
+    attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
+        syncAssetMainZoom(min, max);
+    });
+}
 
-        attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
-            syncAssetMainZoom(min, max);
-        });
+window.setAssetSubTab = function(tab, btnElem) {
+    currentSubTab = tab;
+    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+    if (btnElem) btnElem.classList.add('active');
+    if (assetFilteredSeries.length) renderAssetSubChart(assetFilteredSeries, tab);
+};
+
+/* ---- Shared Range / Zoom Controls ---- */
+window.resetAssetChartZoom = function() {
+    if (!assetFilteredSeries.length) return;
+    const minTimestamp = assetFilteredSeries[0].x;
+    const maxTimestamp = assetFilteredSeries[assetFilteredSeries.length - 1].x;
+
+    if (assetMainChartInstance) {
+        assetMainChartInstance.options.scales.x.min = minTimestamp;
+        assetMainChartInstance.options.scales.x.max = maxTimestamp;
+        assetMainChartInstance.options.scales.y.min = undefined;
+        assetMainChartInstance.options.scales.y.max = undefined;
+        assetMainChartInstance.update();
     }
+    if (assetSubChartInstance) {
+        assetSubChartInstance.options.scales.x.min = minTimestamp;
+        assetSubChartInstance.options.scales.x.max = maxTimestamp;
+        assetSubChartInstance.options.scales.y.min = undefined;
+        assetSubChartInstance.options.scales.y.max = undefined;
+        assetSubChartInstance.update();
+    }
+};
 
-    window.setAssetSubTab = function(tab, btnElem) {
-        currentSubTab = tab;
-        document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
-        if (btnElem) btnElem.classList.add('active');
-        if (assetFilteredSeries.length) renderAssetSubChart(assetFilteredSeries, tab);
-    };
+window.setAssetTimeRange = function(range, btnElem) {
+    document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
+    if (btnElem) btnElem.classList.add('active');
 
-    /* ---- Shared Range / Zoom Controls ---- */
-    window.resetAssetChartZoom = function() {
-        if (!assetFilteredSeries.length) return;
-        const minTimestamp = assetFilteredSeries[0].x;
-        const maxTimestamp = assetFilteredSeries[assetFilteredSeries.length - 1].x;
+    if (!assetRawSeries.length) return;
 
-        if (assetMainChartInstance) {
-            assetMainChartInstance.options.scales.x.min = minTimestamp;
-            assetMainChartInstance.options.scales.x.max = maxTimestamp;
-            assetMainChartInstance.options.scales.y.min = undefined;
-            assetMainChartInstance.options.scales.y.max = undefined;
-            assetMainChartInstance.update();
-        }
-        if (assetSubChartInstance) {
-            assetSubChartInstance.options.scales.x.min = minTimestamp;
-            assetSubChartInstance.options.scales.x.max = maxTimestamp;
-            assetSubChartInstance.options.scales.y.min = undefined;
-            assetSubChartInstance.options.scales.y.max = undefined;
-            assetSubChartInstance.update();
-        }
-    };
+    const latestDate = new Date(assetRawSeries[assetRawSeries.length - 1].x);
+    let startDate = new Date(latestDate);
 
-    window.setAssetTimeRange = function(range, btnElem) {
-        document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
-        if (btnElem) btnElem.classList.add('active');
+    if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
+    else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
+    else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
+    else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
+    else startDate = new Date(assetRawSeries[0].x);
 
-        if (!assetRawSeries.length) return;
+    assetFilteredSeries = assetRawSeries.filter(d => d.x >= startDate.getTime());
 
-        const latestDate = new Date(assetRawSeries[assetRawSeries.length - 1].x);
-        let startDate = new Date(latestDate);
+    renderAssetMainChart(assetFilteredSeries);
+    renderAssetSubChart(assetFilteredSeries, currentSubTab);
+};
 
-        if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
-        else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
-        else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
-        else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-        else startDate = new Date(assetRawSeries[0].x);
-
-        assetFilteredSeries = assetRawSeries.filter(d => d.x >= startDate.getTime());
-
-        renderAssetMainChart(assetFilteredSeries);
-        renderAssetSubChart(assetFilteredSeries, currentSubTab);
-    };
-
-    document.addEventListener("DOMContentLoaded", initScreener);
-    initScreener();
+document.addEventListener("DOMContentLoaded", initScreener);
+initScreener();
 })();
