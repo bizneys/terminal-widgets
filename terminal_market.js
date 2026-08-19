@@ -7,6 +7,7 @@
     let nsiChartInstance = null;
     let gridApi = null;
     let isSeriesVisible = [true, true, true, true, true];
+    let isSplitInitialized = false;
 
     /* ============================================================
      * Custom Chart.js plugins (registered once, reused by any chart
@@ -15,6 +16,9 @@
 
     /* Draws thin dashed horizontal reference lines at fixed y-values,
        e.g. the NSI "High Sync" / "Moderate" band boundaries. */
+    /* Each entry in `lines` may be a plain number (drawn with the default light dashed
+       style) or an { value, emphasis: true } object (drawn darker/heavier) — used to make
+       upper/lower band boundaries stand out more than a center/zero line. */
     const thresholdLinesPlugin = {
         id: 'thresholdLines',
         afterDraw(chart, args, opts) {
@@ -23,10 +27,13 @@
             const { ctx, chartArea, scales } = chart;
             if (!chartArea || !scales.y) return;
             ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
-            ctx.lineWidth = 1;
-            lines.forEach((val) => {
+            lines.forEach((line) => {
+                const isObj = typeof line === 'object' && line !== null;
+                const val = isObj ? line.value : line;
+                const emphasis = isObj && line.emphasis;
+                ctx.setLineDash(emphasis ? [4, 2] : [3, 3]);
+                ctx.strokeStyle = emphasis ? 'rgba(51, 65, 85, 0.55)' : 'rgba(100, 116, 139, 0.35)';
+                ctx.lineWidth = emphasis ? 1.3 : 1;
                 const y = scales.y.getPixelForValue(val);
                 ctx.beginPath();
                 ctx.moveTo(chartArea.left, y);
@@ -111,6 +118,7 @@
 
     /* Initialize draggable split layout for Desktop screens */
     function initSplitLayout() {
+        if (isSplitInitialized) return;
         if (window.innerWidth >= 1024) {
             Split(['#chartBoxContainer', '#gridCardContainer'], {
                 sizes: [55, 45], /* Chart pane kept slightly wider than the grid pane, unified with the Assets page */
@@ -123,8 +131,27 @@
                     if (gridApi) gridApi.sizeColumnsToFit();
                 }
             });
+            isSplitInitialized = true;
         }
     }
+
+    /* Keep chart canvases and the grid's column widths in sync with viewport/container size
+       changes (browser resize, mobile orientation change, sidebar toggles, etc). Chart.js
+       redraws its own canvas via ResizeObserver, but AG Grid's column widths need an explicit
+       sizeColumnsToFit() call, and the split layout only activates once the viewport crosses
+       the 1024px breakpoint — so a resize that crosses that line needs to trigger it too. */
+    let resizeDebounceTimer = null;
+    function handleViewportResize() {
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => {
+            initSplitLayout();
+            if (mainChartInstance) mainChartInstance.resize();
+            if (nsiChartInstance) nsiChartInstance.resize();
+            if (gridApi) gridApi.sizeColumnsToFit();
+        }, 150);
+    }
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('orientationchange', handleViewportResize);
 
     function initTerminal() {
         if (typeof Chart === 'undefined' || typeof agGrid === 'undefined') {
@@ -560,9 +587,10 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false },
-                    /* Thin reference lines at the same High Sync (0.75) / Moderate (0.45)
-                       boundaries used by the NSI KPI card, so the band is visible on the chart too. */
-                    thresholdLines: { lines: [0.75, 0.45] }
+                    /* Reference lines at the same High Sync (0.75) / Moderate (0.45) boundaries
+                       used by the NSI KPI card, so the band is visible on the chart too. Drawn
+                       with emphasis (darker/heavier) since these are the upper/lower band edges. */
+                    thresholdLines: { lines: [{ value: 0.75, emphasis: true }, { value: 0.45, emphasis: true }] }
                 },
                 scales: {
                     x: {
@@ -719,6 +747,9 @@
             onGridReady: (params) => {
                 gridApi = params.api;
                 gridApi.sizeColumnsToFit();
+            },
+            onGridSizeChanged: (params) => {
+                if (params.api) params.api.sizeColumnsToFit();
             }
         };
 
