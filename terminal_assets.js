@@ -797,13 +797,15 @@ window.resetAssetChartZoom = function() {
     }
 };
 
-/* FIX: Do NOT filter array. Keep full data and update x-axis viewport min/max only */
+/* ---- Time Range Selector (Fetch/Keep FULL data, update view bounds only) ---- */
 window.setAssetTimeRange = function(range, btnElem) {
     document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
 
-    if (!assetRawSeries.length) return;
+    // Return if full raw data is not loaded yet
+    if (!assetRawSeries || !assetRawSeries.length) return;
 
+    // Always reference the latest timestamp from the full dataset
     const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
     const latestDate = new Date(maxTimestamp);
     let startDate = new Date(latestDate);
@@ -816,14 +818,13 @@ window.setAssetTimeRange = function(range, btnElem) {
 
     const minTimestamp = startDate.getTime();
 
-    // 1. Update Main Chart viewport bounds without re-rendering/destroying data
+    // Do NOT filter or re-fetch data. Just update X-axis viewport limits.
     if (assetMainChartInstance) {
         assetMainChartInstance.options.scales.x.min = minTimestamp;
         assetMainChartInstance.options.scales.x.max = maxTimestamp;
         assetMainChartInstance.update('none');
     }
 
-    // 2. Update Sub Chart viewport bounds
     if (assetSubChartInstance) {
         assetSubChartInstance.options.scales.x.min = minTimestamp;
         assetSubChartInstance.options.scales.x.max = maxTimestamp;
