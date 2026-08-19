@@ -32,7 +32,8 @@
                 return;
             }
 
-            rawUniverseData = data;
+            // Filter out dummy or invalid empty rows to guarantee exact count (100)
+            rawUniverseData = data.filter(item => item && (item.ticker || item.name));
             renderUniverseGrid(rawUniverseData);
             populateQuarterDropdown(rawUniverseData);
         })
@@ -90,11 +91,11 @@
         const selectedQuarter = quarterSelect ? quarterSelect.value : "ALL";
         if (quarterInfoElem) quarterInfoElem.innerText = selectedQuarter !== "ALL" ? selectedQuarter : "Multi-Quarter";
 
-        const sortedByWeight = [...data].sort((a, b) => (b.weight || 0) - (a.weight || 0));
-        const topHolding = sortedByWeight[0];
-        if (maxWeightElem && topHolding) {
-            maxWeightElem.innerText = topHolding.weight !== undefined && topHolding.weight !== null ? (topHolding.weight * 100).toFixed(2) + "%" : "-";
-            maxTickerElem.innerText = topHolding.ticker || "-";
+        // Equal weighting logic update: display equal weight percentage instead of top holding title
+        const sampleHolding = data[0];
+        if (maxWeightElem && sampleHolding) {
+            maxWeightElem.innerText = sampleHolding.weight !== undefined && sampleHolding.weight !== null ? (sampleHolding.weight * 100).toFixed(2) + "%" : "-";
+            if (maxTickerElem) maxTickerElem.innerText = "Equal Weight";
         }
 
         const uniqueFactors = new Set(data.map(d => d.narrative_factor).filter(Boolean));
