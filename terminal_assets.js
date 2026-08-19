@@ -159,6 +159,8 @@
             .then(res => res.json())
             .then(data => {
                 assetSnapshotData = data || [];
+                assetSnapshotData.sort((a, b) => (a.ticker || '').localeCompare(b.ticker || ''));
+
                 renderScreenerGrid(assetSnapshotData);
                 updateRowCountLabel(assetSnapshotData.length, assetSnapshotData.length);
 
@@ -166,9 +168,6 @@
                 document.getElementById('assetSubtitle').innerText =
                     `${assetSnapshotData.length.toLocaleString()} assets \u00B7 Snapshot as of ${dateLabel}`;
 
-                /* Default the chart panel to the first row (highest volume, per the API's default
-                   ordering) so the layout isn't empty on load. This is independent of the grid's
-                   own default display sort (ticker, alphabetical) set below. */
                 if (assetSnapshotData.length) {
                     selectAsset(assetSnapshotData[0].ticker, assetSnapshotData[0].name);
                 }
