@@ -587,10 +587,10 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false },
-                    /* Reference lines at the same High Sync (0.75) / Moderate (0.45) boundaries
+                    /* Reference lines at the same High Sync (0.70) / Moderate (0.30) boundaries
                        used by the NSI KPI card, so the band is visible on the chart too. Drawn
                        with emphasis (darker/heavier) since these are the upper/lower band edges. */
-                    thresholdLines: { lines: [{ value: 0.75, emphasis: true }, { value: 0.45, emphasis: true }] }
+                    thresholdLines: { lines: [{ value: 0.70, emphasis: true }, { value: 0.30, emphasis: true }] }
                 },
                 scales: {
                     x: {
