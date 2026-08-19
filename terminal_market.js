@@ -1,12 +1,29 @@
 (function() {
-    const API_URL = "https://bizneys.com/api/v1/market";
+    const API_LATEST_URL = "https://bizneys.com/api/v1/assets/latest";
+    const API_TIMESERIES_URL = "https://bizneys.com/api/v1/assets/timeseries/";
 
-    let rawMarketData = [];
-    let filteredMarketData = [];
-    let mainChartInstance = null;
-    let nsiChartInstance = null;
-    let gridApi = null;
-    let isSeriesVisible = [true, true, true, true, true];
+    /* Full names behind each narrative-factor short code, reused for grid tooltips and the
+       chart's exposures legend so "SC / AH / H / F" are never shown without their meaning. */
+    const NARRATIVE_FACTOR_NAMES = {
+        SC: 'Singularity Core',
+        AH: 'Augmented Humanity',
+        H: 'Humanity',
+        F: 'Foundation'
+    };
+
+    let screenerGridApi = null;
+    let assetSnapshotData = [];
+
+    let selectedTicker = null;
+    let selectedName = null;
+    let assetRawSeries = [];       /* Full time-series for the selected ticker */
+    let assetFilteredSeries = [];  /* Range-filtered slice currently rendered */
+
+    let assetMainChartInstance = null;
+    let assetSubChartInstance = null;
+
+    let currentSubTab = 'premium';
+    let isMAVisible = [true, false, false, false]; /* index 0 = price (always on), 1 = MA20, 2 = MA50, 3 = MA200 */
     let isSplitInitialized = false;
 
     /* ============================================================
@@ -14,8 +31,8 @@
      * that opts in via its own `plugins.<id>` config block)
      * ============================================================ */
 
-    /* Draws thin dashed horizontal reference lines at fixed y-values,
-       e.g. the NSI "High Sync" / "Moderate" band boundaries. */
+    /* Draws thin dashed horizontal reference lines at fixed y-values (e.g. the zero line for
+       exposures / alpha, or the zero + one-std-dev band for narrative premium below). */
     /* Each entry in `lines` may be a plain number (drawn with the default light dashed
        style) or an { value, emphasis: true } object (drawn darker/heavier) — used to make
        upper/lower band boundaries stand out more than a center/zero line. */
@@ -69,7 +86,7 @@
      * Fullscreen Toggle
      * ============================================================ */
     window.toggleFullscreen = function() {
-        const el = document.getElementById('marketTerminalWrapper');
+        const el = document.getElementById('assetTerminalWrapper');
         if (!document.fullscreenElement) {
             (el.requestFullscreen ? el.requestFullscreen() : Promise.resolve()).catch(() => {});
         } else {
@@ -78,16 +95,15 @@
     };
 
     document.addEventListener('fullscreenchange', () => {
-        const el = document.getElementById('marketTerminalWrapper');
+        const el = document.getElementById('assetTerminalWrapper');
         const btn = document.getElementById('btnFullscreen');
         const isFs = document.fullscreenElement === el;
         el.classList.toggle('is-fullscreen', isFs);
         if (btn) btn.innerHTML = isFs ? '&#10005; Exit Fullscreen' : '&#9974; Fullscreen';
-        /* Chart/grid containers changed size; give the browser a tick to reflow before resizing */
         setTimeout(() => {
-            if (mainChartInstance) mainChartInstance.resize();
-            if (nsiChartInstance) nsiChartInstance.resize();
-            if (gridApi) gridApi.sizeColumnsToFit();
+            if (assetMainChartInstance) assetMainChartInstance.resize();
+            if (assetSubChartInstance) assetSubChartInstance.resize();
+            if (screenerGridApi) screenerGridApi.sizeColumnsToFit();
         }, 50);
     });
 
@@ -95,9 +111,9 @@
      * PNG Snapshot Export (main + sub chart stacked into one image)
      * ============================================================ */
     window.downloadChartSnapshot = function() {
-        const mainCanvas = document.getElementById('mainCanvas');
-        const subCanvas = document.getElementById('nsiCanvas');
-        if (!mainCanvas || !subCanvas) return;
+        const mainCanvas = document.getElementById('assetMainCanvas');
+        const subCanvas = document.getElementById('assetSubCanvas');
+        if (!mainCanvas || !subCanvas || !assetMainChartInstance) return;
 
         const gap = 16;
         const composite = document.createElement('canvas');
@@ -111,24 +127,26 @@
         ctx.drawImage(subCanvas, 0, mainCanvas.height + gap);
 
         const link = document.createElement('a');
-        link.download = 'bizneys_market_snapshot.png';
+        link.download = `bizneys_asset_snapshot_${selectedTicker || 'chart'}.png`;
         link.href = composite.toDataURL('image/png');
         link.click();
     };
 
-    /* Initialize draggable split layout for Desktop screens */
+    /* ============================================================
+     * Split.js Layout: Chart (left) / Screener Grid (right)
+     * ============================================================ */
     function initSplitLayout() {
         if (isSplitInitialized) return;
         if (window.innerWidth >= 1024) {
             Split(['#chartBoxContainer', '#gridCardContainer'], {
-                sizes: [55, 45], /* Chart pane kept slightly wider than the grid pane, unified with the Assets page */
-                minSize: [300, 300],
+                sizes: [55, 45], /* Unified with the Market page: chart pane kept slightly wider */
+                minSize: [320, 380],
                 gutterSize: 6,
                 cursor: 'col-resize',
                 onDrag: () => {
-                    if (mainChartInstance) mainChartInstance.resize();
-                    if (nsiChartInstance) nsiChartInstance.resize();
-                    if (gridApi) gridApi.sizeColumnsToFit();
+                    if (assetMainChartInstance) assetMainChartInstance.resize();
+                    if (assetSubChartInstance) assetSubChartInstance.resize();
+                    if (screenerGridApi) screenerGridApi.sizeColumnsToFit();
                 }
             });
             isSplitInitialized = true;
@@ -145,106 +163,245 @@
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = setTimeout(() => {
             initSplitLayout();
-            if (mainChartInstance) mainChartInstance.resize();
-            if (nsiChartInstance) nsiChartInstance.resize();
-            if (gridApi) gridApi.sizeColumnsToFit();
+            if (assetMainChartInstance) assetMainChartInstance.resize();
+            if (assetSubChartInstance) assetSubChartInstance.resize();
+            if (screenerGridApi) screenerGridApi.sizeColumnsToFit();
         }, 150);
     }
     window.addEventListener('resize', handleViewportResize);
     window.addEventListener('orientationchange', handleViewportResize);
 
-    function initTerminal() {
+    /* ============================================================
+     * Screener Grid (right pane)
+     * ============================================================ */
+    function initScreener() {
         if (typeof Chart === 'undefined' || typeof agGrid === 'undefined') {
-            setTimeout(initTerminal, 100);
+            setTimeout(initScreener, 100);
             return;
         }
 
         initSplitLayout();
 
-        fetch(API_URL)
+        fetch(API_LATEST_URL)
             .then(res => res.json())
             .then(data => {
-                if (!data || data.length === 0) return;
+                assetSnapshotData = data || [];
+                renderScreenerGrid(assetSnapshotData);
+                updateRowCountLabel(assetSnapshotData.length, assetSnapshotData.length);
 
-                rawMarketData = data.map(d => ({
-                    ...d,
-                    x: new Date(d.date).getTime()
-                })).sort((a, b) => a.x - b.x);
+                const dateLabel = assetSnapshotData.length ? assetSnapshotData[0].date : '-';
+                document.getElementById('assetSubtitle').innerText =
+                    `${assetSnapshotData.length.toLocaleString()} assets \u00B7 Snapshot as of ${dateLabel}`;
 
-                filteredMarketData = [...rawMarketData];
-
-                updateKPICards(rawMarketData);
-                renderMainChart(filteredMarketData);
-                renderNSIChart(filteredMarketData);
-                renderSummaryGrid(filteredMarketData);
+                /* Default the chart panel to the first ticker alphabetically, matching the grid's
+                   own default sort (ticker ascending) so the initially-selected row is always the
+                   same one highlighted at the top of the table (previously this used the API's raw
+                   response order, which is sorted by volume and surfaced odd first picks). */
+                if (assetSnapshotData.length) {
+                    const firstByTicker = [...assetSnapshotData].sort((a, b) =>
+                        (a.ticker || '').localeCompare(b.ticker || '')
+                    )[0];
+                    selectAsset(firstByTicker.ticker, firstByTicker.name);
+                }
             })
-            .catch(err => console.error("Error loading terminal data:", err));
+            .catch(err => {
+                console.error("Error loading asset snapshot:", err);
+                document.getElementById('assetSubtitle').innerText = "Failed to load universe";
+            });
     }
 
-    function updateKPICards(data) {
-        const latest = data[data.length - 1];
-        const prev = data[data.length - 2] || latest;
+    function signedPercentFormatter(params) {
+        if (params.value === null || params.value === undefined) return "-";
+        const pct = params.value * 100;
+        return (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%";
+    }
+    function signedNumberFormatter(decimals) {
+        return (params) => {
+            if (params.value === null || params.value === undefined) return "-";
+            return (params.value >= 0 ? "+" : "") + params.value.toFixed(decimals);
+        };
+    }
+    function signedCellStyle(params) {
+        if (params.value === null || params.value === undefined) return null;
+        return { color: params.value >= 0 ? '#16a34a' : '#dc2626', fontWeight: 600 };
+    }
+    const compactVolumeFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
 
-        const setKPI = (valId, chgId, curr, previous) => {
-            const valElem = document.getElementById(valId);
-            const chgElem = document.getElementById(chgId);
-            if (!valElem || !chgElem) return;
-
-            valElem.innerText = (curr !== undefined && curr !== null) ? curr.toFixed(1) : "-";
-            if (previous && previous !== 0) {
-                const pct = ((curr - previous) / previous) * 100;
-                chgElem.innerText = (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%";
-                chgElem.className = `kpi-change ${pct >= 0 ? 'up' : 'down'}`;
+    function renderScreenerGrid(data) {
+        const gridOptions = {
+            columnDefs: [
+                { field: "ticker", headerName: "Ticker", sort: "asc", pinned: 'left', minWidth: 90, cellClass: 'ag-ticker-cell' },
+                { field: "name", headerName: "Name", minWidth: 160, flex: 1.4 },
+                { field: "adj_close", headerName: "Adj Close", minWidth: 100, flex: 1, valueFormatter: p => p.value?.toFixed(2) },
+                { field: "volume", headerName: "Volume", minWidth: 90, flex: 1, valueFormatter: p => p.value !== null && p.value !== undefined ? compactVolumeFormatter.format(p.value) : "-" },
+                { field: "daily_return", headerName: "Daily Return", minWidth: 100, flex: 1, valueFormatter: signedPercentFormatter, cellStyle: signedCellStyle },
+                {
+                    headerName: "Narrative Exposures (\u03B2)",
+                    headerTooltip: "Sensitivity of the asset's returns to each narrative factor",
+                    children: [
+                        { field: "beta_sc", headerName: "\u03B2 SC", headerTooltip: NARRATIVE_FACTOR_NAMES.SC, minWidth: 70, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) },
+                        { field: "beta_ah", headerName: "\u03B2 AH", headerTooltip: NARRATIVE_FACTOR_NAMES.AH, minWidth: 70, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) },
+                        { field: "beta_h", headerName: "\u03B2 H", headerTooltip: NARRATIVE_FACTOR_NAMES.H, minWidth: 65, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) },
+                        { field: "beta_f", headerName: "\u03B2 F", headerTooltip: NARRATIVE_FACTOR_NAMES.F, minWidth: 65, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) }
+                    ]
+                },
+                { field: "alpha", headerName: "\u03B1 Alpha", headerTooltip: "Return unexplained by narrative factor exposure", minWidth: 90, flex: 1, valueFormatter: signedNumberFormatter(3), cellStyle: signedCellStyle },
+                { field: "narrative_premium", headerName: "Narrative Premium", minWidth: 110, flex: 1.1, valueFormatter: signedNumberFormatter(3), cellStyle: signedCellStyle }
+            ],
+            rowData: data,
+            pagination: true,
+            paginationPageSize: 50,
+            paginationPageSizeSelector: [25, 50, 100, 200],
+            suppressCellFocus: true,
+            suppressRowClickSelection: true,
+            defaultColDef: { resizable: true, sortable: true, filter: true },
+            rowClassRules: {
+                'ag-row-selected-ticker': (params) => params.data && params.data.ticker === selectedTicker
+            },
+            onGridReady: (params) => {
+                screenerGridApi = params.api;
+                screenerGridApi.sizeColumnsToFit();
+            },
+            onRowClicked: (params) => {
+                if (params.data) selectAsset(params.data.ticker, params.data.name);
+            },
+            onFilterChanged: () => {
+                updateRowCountLabel(screenerGridApi.getDisplayedRowCount(), assetSnapshotData.length);
+            },
+            onGridSizeChanged: (params) => {
+                if (params.api) params.api.sizeColumnsToFit();
             }
         };
 
-        setKPI("kpi-composite-val", "kpi-composite-chg", latest.COMPOSITE, prev.COMPOSITE);
-        setKPI("kpi-sc-val", "kpi-sc-chg", latest.SC, prev.SC);
-        setKPI("kpi-ah-val", "kpi-ah-chg", latest.AH, prev.AH);
-        setKPI("kpi-h-val", "kpi-h-chg", latest.H, prev.H);
-        setKPI("kpi-f-val", "kpi-f-chg", latest.F, prev.F);
-
-        const nsiVal = latest.nsi_standardized;
-        const nsiValElem = document.getElementById("kpi-nsi-val");
-        const nsiStatusElem = document.getElementById("kpi-nsi-status");
-
-        if (nsiVal !== null && nsiVal !== undefined) {
-            nsiValElem.innerText = nsiVal.toFixed(2);
-
-            if (nsiVal >= 0.75) {
-                nsiStatusElem.innerText = "High Sync";
-                nsiStatusElem.className = "kpi-change high";
-            } else if (nsiVal >= 0.45) {
-                nsiStatusElem.innerText = "Moderate";
-                nsiStatusElem.className = "kpi-change moderate";
-            } else {
-                nsiStatusElem.innerText = "Low Sync";
-                nsiStatusElem.className = "kpi-change low";
-            }
-        } else {
-            nsiValElem.innerText = "N/A";
-            nsiStatusElem.innerText = "-";
-        }
+        const gridDiv = document.getElementById('assetScreenerGrid');
+        gridDiv.innerHTML = '';
+        screenerGridApi = agGrid.createGrid(gridDiv, gridOptions);
     }
 
-    function syncSubChartZoom(min, max) {
-        if (nsiChartInstance && nsiChartInstance.scales.x) {
-            nsiChartInstance.options.scales.x.min = min;
-            nsiChartInstance.options.scales.x.max = max;
-            nsiChartInstance.update('none');
-        }
+    function updateRowCountLabel(shown, total) {
+        const label = document.getElementById('assetRowCountLabel');
+        label.innerText = shown === total
+            ? `${total.toLocaleString()} assets`
+            : `${shown.toLocaleString()} / ${total.toLocaleString()} assets`;
     }
 
-    function syncMainChartZoom(min, max) {
-        if (mainChartInstance && mainChartInstance.scales.x) {
-            mainChartInstance.options.scales.x.min = min;
-            mainChartInstance.options.scales.x.max = max;
-            mainChartInstance.update('none');
-        }
+    /* Exports the currently visible/filtered screener grid (cross-sectional snapshot) */
+    window.exportAssetsCSV = function() {
+        if (screenerGridApi) screenerGridApi.exportDataAsCsv({ fileName: 'bizneys_asset_screener.csv' });
+    };
+
+    /* Exports the selected asset's own full time-series (not the cross-sectional grid) */
+    window.downloadAssetTimeseriesCSV = function() {
+        if (!selectedTicker || !assetRawSeries.length) return;
+
+        const columns = ['date', 'ticker', 'name', 'adj_close', 'volume', 'daily_return', 'beta_sc', 'beta_ah', 'beta_h', 'beta_f', 'alpha', 'narrative_premium'];
+        const rows = [columns.join(',')];
+
+        assetRawSeries.forEach((d) => {
+            const row = columns.map((col) => {
+                if (col === 'name') return `"${(selectedName || '').replace(/"/g, '""')}"`;
+                const val = d[col];
+                return (val === null || val === undefined) ? '' : val;
+            });
+            rows.push(row.join(','));
+        });
+
+        const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `bizneys_asset_timeseries_${selectedTicker}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    };
+
+    /* ============================================================
+     * Left Panel: Docked Chart.js Chart (Main + Sub tabs)
+     * ============================================================ */
+
+    function selectAsset(ticker, name) {
+        selectedTicker = ticker;
+        selectedName = name;
+
+        document.getElementById('chartPanelPlaceholder').style.display = 'none';
+        document.getElementById('chartPanelSelected').style.display = 'flex';
+        document.getElementById('chartPanelTicker').innerText = ticker;
+        document.getElementById('chartPanelName').innerText = name || '';
+
+        document.getElementById('chartPanelEmpty').style.display = 'none';
+        document.getElementById('chartPanelLoading').style.display = 'flex';
+        document.getElementById('chartPanelLoading').innerText = 'Loading time-series...';
+        document.getElementById('chartPanelContent').style.display = 'none';
+
+        /* Reset per-selection UI state */
+        currentSubTab = 'premium';
+        isMAVisible = [true, false, false, false];
+        document.getElementById('chk-ma20').checked = false;
+        document.getElementById('chk-ma50').checked = false;
+        document.getElementById('chk-ma200').checked = false;
+        document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+        document.querySelector('.btn-tab[data-tab="premium"]').classList.add('active');
+        document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
+        document.querySelector('.range-selector .btn-range:last-child').classList.add('active');
+        renderSubTabLegend('premium');
+
+        if (screenerGridApi) screenerGridApi.redrawRows();
+
+        loadAssetTimeseries(ticker);
     }
 
-    /* Custom Drag & Wheel & Mobile 2-Finger Zoom Handler */
-    function attachChartDragInteractions(canvasId, chartGetter) {
+    function loadAssetTimeseries(ticker) {
+        fetch(API_TIMESERIES_URL + encodeURIComponent(ticker))
+            .then(res => res.json())
+            .then(data => {
+                if (!data || data.length === 0) {
+                    document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
+                    return;
+                }
+
+                assetRawSeries = data
+                    .map(d => ({ ...d, x: new Date(d.date).getTime() }))
+                    .sort((a, b) => a.x - b.x);
+
+                attachMovingAverages(assetRawSeries);
+                assetFilteredSeries = [...assetRawSeries];
+
+                document.getElementById('chartPanelLoading').style.display = 'none';
+                document.getElementById('chartPanelContent').style.display = 'block';
+
+                renderAssetMainChart(assetFilteredSeries);
+                renderAssetSubChart(assetFilteredSeries, currentSubTab);
+            })
+            .catch(err => {
+                console.error("Error loading asset timeseries:", err);
+                document.getElementById('chartPanelLoading').innerText = "Failed to load time-series.";
+            });
+    }
+
+    /* Simple moving average, computed client-side/on-demand (no server round-trip) */
+    function computeMovingAverage(series, field, period) {
+        const result = new Array(series.length).fill(null);
+        let windowSum = 0;
+        for (let i = 0; i < series.length; i++) {
+            windowSum += series[i][field];
+            if (i >= period) windowSum -= series[i - period][field];
+            if (i >= period - 1) result[i] = windowSum / period;
+        }
+        return result;
+    }
+
+    function attachMovingAverages(series) {
+        const ma20 = computeMovingAverage(series, 'adj_close', 20);
+        const ma50 = computeMovingAverage(series, 'adj_close', 50);
+        const ma200 = computeMovingAverage(series, 'adj_close', 200);
+        series.forEach((d, i) => {
+            d.ma20 = ma20[i];
+            d.ma50 = ma50[i];
+            d.ma200 = ma200[i];
+        });
+    }
+
+    /* ---- Shared drag / wheel / pinch interaction handler (same pattern as the Market Terminal) ---- */
+    function attachChartDragInteractions(canvasId, chartGetter, onZoomChange) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
 
@@ -252,13 +409,8 @@
         let isYScaleDrag = false;
         let startX = 0;
         let startY = 0;
+        let startXMin = 0, startXMax = 0, startYMin = 0, startYMax = 0;
 
-        let startXMin = 0;
-        let startXMax = 0;
-        let startYMin = 0;
-        let startYMax = 0;
-
-        /* Mobile 2-Finger Touch Pinch Tracking */
         let touchPinchInitialDistance = 0;
         let initialTouchXMin = 0;
         let initialTouchXMax = 0;
@@ -279,17 +431,11 @@
         };
 
         const updateCursor = (clientX) => {
-            if (isOverYAxis(clientX)) {
-                canvas.style.cursor = 'ns-resize';
-            } else {
-                canvas.style.cursor = 'crosshair';
-            }
+            canvas.style.cursor = isOverYAxis(clientX) ? 'ns-resize' : 'crosshair';
         };
 
         canvas.addEventListener('mousemove', (e) => {
-            if (!isDragging) {
-                updateCursor(e.clientX);
-            }
+            if (!isDragging) updateCursor(e.clientX);
         });
 
         const handleStart = (e) => {
@@ -303,7 +449,6 @@
             isDragging = true;
             startX = clientX;
             startY = clientY;
-
             startXMin = chart.scales.x.min;
             startXMax = chart.scales.x.max;
             startYMin = chart.scales.y.min;
@@ -320,7 +465,6 @@
 
         const handleMove = (e) => {
             if (!isDragging) return;
-
             const chart = chartGetter();
             if (!chart) return;
 
@@ -332,20 +476,16 @@
             const deltaY = clientY - startY;
 
             if (isYScaleDrag) {
-                /* Dragging on Right Price Scale Area: Scale Height Adjustment */
                 const rangeY = startYMax - startYMin;
                 const scaleFactor = 1 + (deltaY / 150);
-
                 if (scaleFactor > 0.05) {
                     const center = (startYMin + startYMax) / 2;
                     const newHalfRange = (rangeY * scaleFactor) / 2;
-
                     chart.options.scales.y.min = Math.max(0, center - newHalfRange);
                     chart.options.scales.y.max = center + newHalfRange;
                     chart.update('none');
                 }
             } else {
-                /* Dragging Inside Chart Area: Full Horizontal & Vertical Drag Pan */
                 const xAxis = chart.scales.x;
                 const yAxis = chart.scales.y;
 
@@ -366,11 +506,9 @@
                 chart.options.scales.x.max = newXMax;
                 chart.options.scales.y.min = newYMin;
                 chart.options.scales.y.max = newYMax;
-
                 chart.update('none');
 
-                syncMainChartZoom(newXMin, newXMax);
-                syncSubChartZoom(newXMin, newXMax);
+                if (onZoomChange) onZoomChange(newXMin, newXMax);
             }
         };
 
@@ -382,7 +520,6 @@
             }
         };
 
-        /* Wheel Scroll Zoom Handling */
         const handleWheel = (e) => {
             e.preventDefault();
             const chart = chartGetter();
@@ -391,18 +528,15 @@
             const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
 
             if (isOverYAxis(e.clientX)) {
-                /* Scroll over Price Axis: Y-Axis Price Zoom */
                 const currentMin = chart.scales.y.min;
                 const currentMax = chart.scales.y.max;
                 const range = currentMax - currentMin;
                 const center = (currentMin + currentMax) / 2;
                 const newHalfRange = (range * zoomFactor) / 2;
-
                 chart.options.scales.y.min = Math.max(0, center - newHalfRange);
                 chart.options.scales.y.max = center + newHalfRange;
                 chart.update('none');
             } else {
-                /* Scroll Inside Chart Body: X-Axis Time Zoom */
                 const currentMin = chart.scales.x.min;
                 const currentMax = chart.scales.x.max;
                 const range = currentMax - currentMin;
@@ -420,8 +554,7 @@
                 chart.options.scales.x.max = newMax;
                 chart.update('none');
 
-                syncMainChartZoom(newMin, newMax);
-                syncSubChartZoom(newMin, newMax);
+                if (onZoomChange) onZoomChange(newMin, newMax);
             }
         };
 
@@ -430,16 +563,13 @@
         window.addEventListener('mouseup', handleEnd);
         canvas.addEventListener('wheel', handleWheel, { passive: false });
 
-        /* Mobile Touch Events (1-Finger Pan & 2-Finger Pinch Zoom) */
         canvas.addEventListener('touchstart', (e) => {
             if (e.touches && e.touches.length === 1) {
                 handleStart(e);
             } else if (e.touches && e.touches.length === 2) {
-                /* Initialize 2-finger pinch gesture */
                 isDragging = false;
                 const chart = chartGetter();
                 if (!chart) return;
-
                 touchPinchInitialDistance = getTouchDistance(e);
                 initialTouchXMin = chart.scales.x.min;
                 initialTouchXMax = chart.scales.x.max;
@@ -450,7 +580,6 @@
             if (e.touches && e.touches.length === 1 && isDragging) {
                 handleMove(e);
             } else if (e.touches && e.touches.length === 2) {
-                /* Handle 2-finger pinch zoom */
                 const chart = chartGetter();
                 if (!chart || touchPinchInitialDistance <= 0) return;
 
@@ -468,35 +597,47 @@
                 chart.options.scales.x.max = newMax;
                 chart.update('none');
 
-                syncMainChartZoom(newMin, newMax);
-                syncSubChartZoom(newMin, newMax);
+                if (onZoomChange) onZoomChange(newMin, newMax);
             }
         }, { passive: true });
 
         window.addEventListener('touchend', (e) => {
-            if (e.touches && e.touches.length < 2) {
-                touchPinchInitialDistance = 0;
-            }
+            if (e.touches && e.touches.length < 2) touchPinchInitialDistance = 0;
             handleEnd();
         });
     }
 
-    function renderMainChart(data) {
-        const ctx = document.getElementById('mainCanvas').getContext('2d');
-        if (mainChartInstance) mainChartInstance.destroy();
+    function syncAssetSubZoom(min, max) {
+        if (assetSubChartInstance && assetSubChartInstance.scales.x) {
+            assetSubChartInstance.options.scales.x.min = min;
+            assetSubChartInstance.options.scales.x.max = max;
+            assetSubChartInstance.update('none');
+        }
+    }
+    function syncAssetMainZoom(min, max) {
+        if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+            assetMainChartInstance.options.scales.x.min = min;
+            assetMainChartInstance.options.scales.x.max = max;
+            assetMainChartInstance.update('none');
+        }
+    }
+
+    /* ---- Main Panel: Price + Moving Averages ---- */
+    function renderAssetMainChart(data) {
+        const ctx = document.getElementById('assetMainCanvas').getContext('2d');
+        if (assetMainChartInstance) assetMainChartInstance.destroy();
 
         const minTimestamp = data[0].x;
         const maxTimestamp = data[data.length - 1].x;
 
-        mainChartInstance = new Chart(ctx, {
+        assetMainChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
                 datasets: [
-                    { label: 'BIZNEYS Composite 100 Index (BIZNEYS 100)', data: data.map(d => ({ x: d.x, y: d.COMPOSITE })), borderColor: '#4338ca', borderWidth: 2.2, pointRadius: 0 },
-                    { label: 'Singularity Core (SC)', data: data.map(d => ({ x: d.x, y: d.SC })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'Augmented Humanity (AH)', data: data.map(d => ({ x: d.x, y: d.AH })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'Humanity (H)', data: data.map(d => ({ x: d.x, y: d.H })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'Foundation (F)', data: data.map(d => ({ x: d.x, y: d.F })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
+                    { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
+                    { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
+                    { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
+                    { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
                 ]
             },
             options: {
@@ -504,9 +645,7 @@
                 maintainAspectRatio: false,
                 animation: false,
                 interaction: { mode: 'index', intersect: false },
-                layout: {
-                    padding: { left: 10, right: 0, top: 0, bottom: 0 }
-                },
+                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false },
@@ -517,251 +656,202 @@
                         type: 'time',
                         min: minTimestamp,
                         max: maxTimestamp,
-                        ticks: {
-                            /* Use the same font size as the NSI chart's ticks so autoSkip measures
-                               label width identically and produces the same tick spacing. Using
-                               display:false here would skip label-width measurement entirely and
-                               pack in far more gridlines than the NSI chart below. Making the
-                               labels transparent keeps the spacing in sync while staying invisible. */
-                            color: 'transparent',
-                            font: { size: 9 },
-                            maxRotation: 0,
-                            autoSkip: true
-                        },
-                        grid: {
-                            display: true,
-                            color: '#f1f5f9'
-                        },
-                        afterFit: (axis) => { axis.height = 0; } /* Reclaim the space reserved for the now-invisible labels */
+                        /* Labels stay invisible on the main panel (dates are shown on the sub panel below),
+                           but color:'transparent' (instead of display:false) keeps real label-width
+                           measurement so autoSkip spacing matches the sub chart's gridlines. */
+                        ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                        grid: { display: true, color: '#f1f5f9' },
+                        afterFit: (axis) => { axis.height = 0; }
                     },
                     y: {
                         position: 'right',
-                        min: 0,
                         grid: { display: true, color: '#f1f5f9' },
-                        ticks: {
-                            font: { size: 9 },
-                            padding: 4
-                        },
+                        ticks: { font: { size: 9 }, padding: 4 },
                         afterFit: (axis) => { axis.width = 55; }
                     }
                 }
             }
         });
 
-        isSeriesVisible.forEach((visible, idx) => {
-            mainChartInstance.setDatasetVisibility(idx, visible);
+        isMAVisible.forEach((visible, idx) => {
+            assetMainChartInstance.setDatasetVisibility(idx, visible);
         });
-        mainChartInstance.update('none');
+        assetMainChartInstance.update('none');
 
-        attachChartDragInteractions('mainCanvas', () => mainChartInstance);
+        attachChartDragInteractions('assetMainCanvas', () => assetMainChartInstance, (min, max) => {
+            syncAssetSubZoom(min, max);
+        });
     }
 
-    function renderNSIChart(data) {
-        const ctx = document.getElementById('nsiCanvas').getContext('2d');
-        if (nsiChartInstance) nsiChartInstance.destroy();
+    window.toggleMA = function(index) {
+        if (!assetMainChartInstance) return;
+        const isVisible = assetMainChartInstance.isDatasetVisible(index);
+        if (isVisible) {
+            assetMainChartInstance.hide(index);
+            isMAVisible[index] = false;
+        } else {
+            assetMainChartInstance.show(index);
+            isMAVisible[index] = true;
+        }
+    };
+
+    /* ---- Sub Panel: Premium / Exposures / Alpha / Volume (tab-switchable) ---- */
+    function buildSubDatasets(data, tab) {
+        if (tab === 'exposures') {
+            return [
+                { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
+            ];
+        }
+        if (tab === 'alpha') {
+            return [
+                { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
+            ];
+        }
+        if (tab === 'volume') {
+            return [
+                { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
+            ];
+        }
+        return [
+            { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
+        ];
+    }
+
+    /* Reference lines per sub-tab:
+       - volume: none (bars already start at 0, an extra line adds no information)
+       - exposures / alpha: a single zero line (positive vs. negative territory)
+       - premium: narrative_premium is z-score normalized in the pipeline (mean 0, std 1 per
+         rebalance), so in addition to the zero line we mark +-1 as a rough "typical range"
+         band. If the methodology settles on different normalization bounds, update this array. */
+    function thresholdsForTab(tab) {
+        if (tab === 'volume') return [];
+        /* Zero stays the lighter default line; the +-1 sigma band edges are emphasized
+           (darker/heavier) so the "typical range" reads more clearly at a glance. */
+        if (tab === 'premium') return [{ value: -1, emphasis: true }, 0, { value: 1, emphasis: true }];
+        return [0];
+    }
+
+    function renderSubTabLegend(tab) {
+        const legendEl = document.getElementById('subTabLegend');
+        if (tab === 'exposures') {
+            legendEl.innerHTML = `
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
+            `;
+        } else if (tab === 'premium') {
+            legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
+        } else {
+            legendEl.innerHTML = '';
+        }
+    }
+
+    function renderAssetSubChart(data, tab) {
+        const ctx = document.getElementById('assetSubCanvas').getContext('2d');
+        if (assetSubChartInstance) assetSubChartInstance.destroy();
+
+        renderSubTabLegend(tab);
 
         const minTimestamp = data[0].x;
         const maxTimestamp = data[data.length - 1].x;
+        /* Volume reads better as bars; every other tab is a signed line series around zero. */
+        const baseType = tab === 'volume' ? 'bar' : 'line';
 
-        nsiChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'NSI',
-                    data: data.map(d => ({ x: d.x, y: d.nsi_standardized })),
-                    borderColor: '#059669',
-                    borderWidth: 1.2,
-                    fill: true,
-                    backgroundColor: 'rgba(5, 150, 105, 0.06)',
-                    pointRadius: 0
-                }]
-            },
+        assetSubChartInstance = new Chart(ctx, {
+            type: baseType,
+            data: { datasets: buildSubDatasets(data, tab) },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
                 interaction: { mode: 'index', intersect: false },
-                layout: {
-                    padding: { left: 10, right: 0, top: 0, bottom: 0 }
-                },
+                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false },
-                    /* Reference lines at the same High Sync (0.75) / Moderate (0.45) boundaries
-                       used by the NSI KPI card, so the band is visible on the chart too. Drawn
-                       with emphasis (darker/heavier) since these are the upper/lower band edges. */
-                    thresholdLines: { lines: [{ value: 0.75, emphasis: true }, { value: 0.45, emphasis: true }] }
+                    thresholdLines: { lines: thresholdsForTab(tab) }
                 },
                 scales: {
                     x: {
                         type: 'time',
                         min: minTimestamp,
                         max: maxTimestamp,
-                        ticks: {
-                            font: { size: 9 },
-                            maxRotation: 0,
-                            autoSkip: true
-                        },
-                        grid: {
-                            display: true,
-                            color: '#f1f5f9'
-                        }
-                        /* Removed afterBuildTicks tick-copying hack: both charts now use the same
-                           autoSkip/maxRotation tick config directly, so their gridlines line up
-                           without one chart overwriting the other's computed ticks. */
+                        ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                        grid: { display: true, color: '#f1f5f9' }
                     },
                     y: {
                         position: 'right',
-                        min: 0,
-                        max: 1,
+                        beginAtZero: tab === 'volume',
                         grid: { display: true, color: '#f1f5f9' },
-                        ticks: { font: { size: 8 }, stepSize: 0.5 },
+                        ticks: {
+                            font: { size: 8 },
+                            callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
+                        },
                         afterFit: (axis) => { axis.width = 55; }
                     }
                 }
             }
         });
 
-        attachChartDragInteractions('nsiCanvas', () => nsiChartInstance);
+        attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
+            syncAssetMainZoom(min, max);
+        });
     }
 
-    window.resetChartZoom = function() {
-        if (mainChartInstance && filteredMarketData.length) {
-            const minTimestamp = filteredMarketData[0].x;
-            const maxTimestamp = filteredMarketData[filteredMarketData.length - 1].x;
+    window.setAssetSubTab = function(tab, btnElem) {
+        currentSubTab = tab;
+        document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+        if (btnElem) btnElem.classList.add('active');
+        if (assetFilteredSeries.length) renderAssetSubChart(assetFilteredSeries, tab);
+    };
 
-            mainChartInstance.options.scales.x.min = minTimestamp;
-            mainChartInstance.options.scales.x.max = maxTimestamp;
-            mainChartInstance.options.scales.y.min = 0;
-            delete mainChartInstance.options.scales.y.max;
-            mainChartInstance.update();
+    /* ---- Shared Range / Zoom Controls ---- */
+    window.resetAssetChartZoom = function() {
+        if (!assetFilteredSeries.length) return;
+        const minTimestamp = assetFilteredSeries[0].x;
+        const maxTimestamp = assetFilteredSeries[assetFilteredSeries.length - 1].x;
 
-            if (nsiChartInstance) {
-                nsiChartInstance.options.scales.x.min = minTimestamp;
-                nsiChartInstance.options.scales.x.max = maxTimestamp;
-                nsiChartInstance.options.scales.y.min = 0;
-                nsiChartInstance.options.scales.y.max = 1;
-                nsiChartInstance.update();
-            }
+        if (assetMainChartInstance) {
+            assetMainChartInstance.options.scales.x.min = minTimestamp;
+            assetMainChartInstance.options.scales.x.max = maxTimestamp;
+            assetMainChartInstance.options.scales.y.min = undefined;
+            assetMainChartInstance.options.scales.y.max = undefined;
+            assetMainChartInstance.update();
+        }
+        if (assetSubChartInstance) {
+            assetSubChartInstance.options.scales.x.min = minTimestamp;
+            assetSubChartInstance.options.scales.x.max = maxTimestamp;
+            assetSubChartInstance.options.scales.y.min = undefined;
+            assetSubChartInstance.options.scales.y.max = undefined;
+            assetSubChartInstance.update();
         }
     };
 
-    window.toggleSeries = function(index) {
-        if (!mainChartInstance) return;
-        const isVisible = mainChartInstance.isDatasetVisible(index);
-
-        if (isVisible) {
-            mainChartInstance.hide(index);
-            isSeriesVisible[index] = false;
-        } else {
-            mainChartInstance.show(index);
-            isSeriesVisible[index] = true;
-        }
-    };
-
-    window.setTimeRange = function(range, btnElem) {
-        document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active'));
+    window.setAssetTimeRange = function(range, btnElem) {
+        document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
         if (btnElem) btnElem.classList.add('active');
 
-        if (!rawMarketData.length) return;
+        if (!assetRawSeries.length) return;
 
-        const latestDate = new Date(rawMarketData[rawMarketData.length - 1].x);
+        const latestDate = new Date(assetRawSeries[assetRawSeries.length - 1].x);
         let startDate = new Date(latestDate);
 
         if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
         else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
         else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
         else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-        else startDate = new Date(rawMarketData[0].x);
+        else startDate = new Date(assetRawSeries[0].x);
 
-        filteredMarketData = rawMarketData.filter(d => d.x >= startDate.getTime());
+        assetFilteredSeries = assetRawSeries.filter(d => d.x >= startDate.getTime());
 
-        renderMainChart(filteredMarketData);
-        renderNSIChart(filteredMarketData);
-
-        if (gridApi) {
-            gridApi.setGridOption('rowData', filteredMarketData);
-        }
+        renderAssetMainChart(assetFilteredSeries);
+        renderAssetSubChart(assetFilteredSeries, currentSubTab);
     };
 
-    function renderSummaryGrid(data) {
-        const gridOptions = {
-            columnDefs: [
-                { field: "date", headerName: "Date", sort: "desc", flex: 1, minWidth: 80 },
-                {
-                    field: "COMPOSITE",
-                    headerName: "BIZNEYS 100",
-                    headerTooltip: "BIZNEYS Composite 100 Index",
-                    valueFormatter: p => p.value?.toFixed(1),
-                    flex: 1,
-                    minWidth: 90
-                },
-                {
-                    field: "SC",
-                    headerName: "SC",
-                    headerTooltip: "Singularity Core (SC)",
-                    valueFormatter: p => p.value?.toFixed(1),
-                    flex: 1,
-                    minWidth: 65
-                },
-                {
-                    field: "AH",
-                    headerName: "AH",
-                    headerTooltip: "Augmented Humanity (AH)",
-                    valueFormatter: p => p.value?.toFixed(1),
-                    flex: 1,
-                    minWidth: 65
-                },
-                {
-                    field: "H",
-                    headerName: "H",
-                    headerTooltip: "Humanity (H)",
-                    valueFormatter: p => p.value?.toFixed(1),
-                    flex: 1,
-                    minWidth: 60
-                },
-                {
-                    field: "F",
-                    headerName: "F",
-                    headerTooltip: "Foundation (F)",
-                    valueFormatter: p => p.value?.toFixed(1),
-                    flex: 1,
-                    minWidth: 60
-                },
-                {
-                    field: "nsi_standardized",
-                    headerName: "NSI",
-                    headerTooltip: "Narrative Synchronization Index (NSI)",
-                    valueFormatter: p => p.value !== null ? p.value.toFixed(2) : "N/A",
-                    flex: 0.8,
-                    minWidth: 55
-                }
-            ],
-            rowData: data,
-            pagination: true,
-            paginationPageSize: 10,
-            suppressHorizontalScroll: false,
-            suppressCellFocus: true,
-            suppressRowClickSelection: true,
-            defaultColDef: { resizable: true, sortable: true, filter: true },
-            onGridReady: (params) => {
-                gridApi = params.api;
-                gridApi.sizeColumnsToFit();
-            },
-            onGridSizeChanged: (params) => {
-                if (params.api) params.api.sizeColumnsToFit();
-            }
-        };
-
-        const gridDiv = document.getElementById('marketSummaryGrid');
-        gridDiv.innerHTML = '';
-        gridApi = agGrid.createGrid(gridDiv, gridOptions);
-    }
-
-    window.exportCSV = function() {
-        if (gridApi) gridApi.exportDataAsCsv({ fileName: 'bizneys_market_data.csv' });
-    };
-
-    document.addEventListener("DOMContentLoaded", initTerminal);
-    initTerminal();
+    document.addEventListener("DOMContentLoaded", initScreener);
+    initScreener();
 })();
