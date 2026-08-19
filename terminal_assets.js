@@ -574,7 +574,6 @@
 
 function syncAssetSubZoom(min, max) {
     if (assetSubChartInstance && assetSubChartInstance.scales.x) {
-        // Apply min/max simultaneously to both options and scales internal properties
         assetSubChartInstance.options.scales.x.min = min;
         assetSubChartInstance.options.scales.x.max = max;
         assetSubChartInstance.scales.x.options.min = min;
@@ -585,7 +584,6 @@ function syncAssetSubZoom(min, max) {
 
 function syncAssetMainZoom(min, max) {
     if (assetMainChartInstance && assetMainChartInstance.scales.x) {
-        // Apply min/max simultaneously to both options and scales internal properties
         assetMainChartInstance.options.scales.x.min = min;
         assetMainChartInstance.options.scales.x.max = max;
         assetMainChartInstance.scales.x.options.min = min;
@@ -595,12 +593,13 @@ function syncAssetMainZoom(min, max) {
 }
 
 /* ---- Main Panel: Price + Moving Averages ---- */
-function renderAssetMainChart(data) {
+function renderAssetMainChart(data, viewMin, viewMax) {
     const ctx = document.getElementById('assetMainCanvas').getContext('2d');
     if (assetMainChartInstance) assetMainChartInstance.destroy();
 
-    const minTimestamp = data[0].x;
-    const maxTimestamp = data[data.length - 1].x;
+    // Default to the full range of data if view limits are not specified
+    const minTimestamp = viewMin !== undefined ? viewMin : data[0].x;
+    const maxTimestamp = viewMax !== undefined ? viewMax : data[data.length - 1].x;
 
     assetMainChartInstance = new Chart(ctx, {
         type: 'line',
@@ -711,19 +710,24 @@ function renderSubTabLegend(tab) {
     }
 }
 
-function renderAssetSubChart(data, tab) {
+function renderAssetSubChart(data, tab, viewMin, viewMax) {
     const ctx = document.getElementById('assetSubCanvas').getContext('2d');
     if (assetSubChartInstance) assetSubChartInstance.destroy();
 
     renderSubTabLegend(tab);
 
-    // Extract current visible X-axis min/max values from the main chart
-    let currentMin = data[0].x;
-    let currentMax = data[data.length - 1].x;
+    // Prioritize explicitly passed view range, otherwise inherit from main chart
+    let currentMin = viewMin;
+    let currentMax = viewMax;
 
-    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
-        currentMin = assetMainChartInstance.scales.x.min;
-        currentMax = assetMainChartInstance.scales.x.max;
+    if (currentMin === undefined || currentMax === undefined) {
+        if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+            currentMin = assetMainChartInstance.scales.x.min;
+            currentMax = assetMainChartInstance.scales.x.max;
+        } else {
+            currentMin = data[0].x;
+            currentMax = data[data.length - 1].x;
+        }
     }
 
     const baseType = tab === 'volume' ? 'bar' : 'line';
@@ -745,8 +749,8 @@ function renderAssetSubChart(data, tab) {
             scales: {
                 x: {
                     type: 'time',
-                    min: currentMin, // Apply current min from the main chart
-                    max: currentMax, // Apply current max from the main chart
+                    min: currentMin,
+                    max: currentMax,
                     ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
                     grid: { display: true, color: '#f1f5f9' }
                 },
@@ -773,14 +777,15 @@ window.setAssetSubTab = function(tab, btnElem) {
     currentSubTab = tab;
     document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
-    if (assetFilteredSeries.length) renderAssetSubChart(assetFilteredSeries, tab);
+    // Pass full series so user can drag left/right seamlessly
+    if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab);
 };
 
 /* ---- Shared Range / Zoom Controls ---- */
 window.resetAssetChartZoom = function() {
-    if (!assetFilteredSeries.length) return;
-    const minTimestamp = assetFilteredSeries[0].x;
-    const maxTimestamp = assetFilteredSeries[assetFilteredSeries.length - 1].x;
+    if (!assetRawSeries.length) return;
+    const minTimestamp = assetRawSeries[0].x;
+    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
 
     if (assetMainChartInstance) {
         assetMainChartInstance.options.scales.x.min = minTimestamp;
@@ -804,7 +809,8 @@ window.setAssetTimeRange = function(range, btnElem) {
 
     if (!assetRawSeries.length) return;
 
-    const latestDate = new Date(assetRawSeries[assetRawSeries.length - 1].x);
+    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+    const latestDate = new Date(maxTimestamp);
     let startDate = new Date(latestDate);
 
     if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
@@ -813,10 +819,11 @@ window.setAssetTimeRange = function(range, btnElem) {
     else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
     else startDate = new Date(assetRawSeries[0].x);
 
-    assetFilteredSeries = assetRawSeries.filter(d => d.x >= startDate.getTime());
+    const minTimestamp = startDate.getTime();
 
-    renderAssetMainChart(assetFilteredSeries);
-    renderAssetSubChart(assetFilteredSeries, currentSubTab);
+    // Keep full dataset loaded, only adjust visible X-axis boundaries (min/max)
+    renderAssetMainChart(assetRawSeries, minTimestamp, maxTimestamp);
+    renderAssetSubChart(assetRawSeries, currentSubTab, minTimestamp, maxTimestamp);
 };
 
 document.addEventListener("DOMContentLoaded", initScreener);
