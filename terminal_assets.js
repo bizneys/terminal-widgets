@@ -720,8 +720,14 @@
 
         renderSubTabLegend(tab);
 
-        const minTimestamp = data[0].x;
-        const maxTimestamp = data[data.length - 1].x;
+        // Get the current zoom range from the main chart if it has already been rendered
+        const currentMin = (assetMainChartInstance && assetMainChartInstance.scales.x)
+            ? assetMainChartInstance.scales.x.min
+            : data[0].x;
+        const currentMax = (assetMainChartInstance && assetMainChartInstance.scales.x)
+            ? assetMainChartInstance.scales.x.max
+            : data[data.length - 1].x;
+
         /* Volume reads better as bars; every other tab is a signed line series around zero. */
         const baseType = tab === 'volume' ? 'bar' : 'line';
 
@@ -742,8 +748,8 @@
                 scales: {
                     x: {
                         type: 'time',
-                        min: minTimestamp,
-                        max: maxTimestamp,
+                        min: currentMin, // Apply current range of the main chart
+                        max: currentMax, // Apply current range of the main chart
                         ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
                         grid: { display: true, color: '#f1f5f9' }
                     },
