@@ -597,9 +597,13 @@ function renderAssetMainChart(data, viewMin, viewMax) {
     const ctx = document.getElementById('assetMainCanvas').getContext('2d');
     if (assetMainChartInstance) assetMainChartInstance.destroy();
 
-    // Default to the full range of data if view limits are not specified
-    const minTimestamp = viewMin !== undefined ? viewMin : data[0].x;
-    const maxTimestamp = viewMax !== undefined ? viewMax : data[data.length - 1].x;
+    // Absolute boundaries based on raw full dataset
+    const absoluteMin = assetRawSeries.length ? assetRawSeries[0].x : data[0].x;
+    const absoluteMax = assetRawSeries.length ? assetRawSeries[assetRawSeries.length - 1].x : data[data.length - 1].x;
+
+    // Viewport boundaries (default to full range if not specified)
+    const minTimestamp = viewMin !== undefined ? viewMin : absoluteMin;
+    const maxTimestamp = viewMax !== undefined ? viewMax : absoluteMax;
 
     assetMainChartInstance = new Chart(ctx, {
         type: 'line',
@@ -625,8 +629,10 @@ function renderAssetMainChart(data, viewMin, viewMax) {
             scales: {
                 x: {
                     type: 'time',
-                    min: minTimestamp,
-                    max: maxTimestamp,
+                    suggestedMin: absoluteMin, // Ensures chart scale spans full data limit
+                    suggestedMax: absoluteMax,
+                    min: minTimestamp,          // Current visible viewport start
+                    max: maxTimestamp,          // Current visible viewport end
                     ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
                     grid: { display: true, color: '#f1f5f9' },
                     afterFit: (axis) => { axis.height = 0; }
@@ -716,7 +722,10 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
 
     renderSubTabLegend(tab);
 
-    // Prioritize explicitly passed view range, otherwise inherit from main chart
+    // Absolute boundaries based on raw full dataset
+    const absoluteMin = assetRawSeries.length ? assetRawSeries[0].x : data[0].x;
+    const absoluteMax = assetRawSeries.length ? assetRawSeries[assetRawSeries.length - 1].x : data[data.length - 1].x;
+
     let currentMin = viewMin;
     let currentMax = viewMax;
 
@@ -725,8 +734,8 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
             currentMin = assetMainChartInstance.scales.x.min;
             currentMax = assetMainChartInstance.scales.x.max;
         } else {
-            currentMin = data[0].x;
-            currentMax = data[data.length - 1].x;
+            currentMin = absoluteMin;
+            currentMax = absoluteMax;
         }
     }
 
@@ -749,6 +758,8 @@ function renderAssetSubChart(data, tab, viewMin, viewMax) {
             scales: {
                 x: {
                     type: 'time',
+                    suggestedMin: absoluteMin, // Ensures scale bounds cover full series
+                    suggestedMax: absoluteMax,
                     min: currentMin,
                     max: currentMax,
                     ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
@@ -777,8 +788,15 @@ window.setAssetSubTab = function(tab, btnElem) {
     currentSubTab = tab;
     document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
-    // Pass full series so user can drag left/right seamlessly
-    if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab);
+    
+    // Maintain current main chart view boundaries during sub-tab switch
+    let currentMin, currentMax;
+    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+        currentMin = assetMainChartInstance.scales.x.min;
+        currentMax = assetMainChartInstance.scales.x.max;
+    }
+    
+    if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab, currentMin, currentMax);
 };
 
 /* ---- Shared Range / Zoom Controls ---- */
@@ -821,7 +839,7 @@ window.setAssetTimeRange = function(range, btnElem) {
 
     const minTimestamp = startDate.getTime();
 
-    // Keep full dataset loaded, only adjust visible X-axis boundaries (min/max)
+    // Render using full raw series with strict view limits
     renderAssetMainChart(assetRawSeries, minTimestamp, maxTimestamp);
     renderAssetSubChart(assetRawSeries, currentSubTab, minTimestamp, maxTimestamp);
 };
