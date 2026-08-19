@@ -802,10 +802,19 @@ window.setAssetTimeRange = function(range, btnElem) {
     document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
 
-    // Return if full raw data is not loaded yet
+    // 1. Return if the full raw dataset does not exist
     if (!assetRawSeries || !assetRawSeries.length) return;
 
-    // Always reference the latest timestamp from the full dataset
+    // 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset
+    if (assetMainChartInstance.data.datasets[0].data.length !== assetRawSeries.length) {
+        assetMainChartInstance.data.datasets[0].data = assetRawSeries.map(d => ({ x: d.x, y: d.adj_close }));
+        // Reassign full dataset to the sub chart as well
+        if (assetSubChartInstance) {
+            assetSubChartInstance.data.datasets = buildSubDatasets(assetRawSeries, currentSubTab);
+        }
+    }
+
+    // 3. Calculate start time (minTimestamp) to display based on the latest date
     const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
     const latestDate = new Date(maxTimestamp);
     let startDate = new Date(latestDate);
@@ -814,11 +823,11 @@ window.setAssetTimeRange = function(range, btnElem) {
     else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
     else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
     else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-    else startDate = new Date(assetRawSeries[0].x);
+    else startDate = new Date(assetRawSeries[0].x); // Full start date for 'ALL' button
 
-    const minTimestamp = startDate.getTime();
+    const minTimestamp = (range === 'ALL') ? assetRawSeries[0].x : startDate.getTime();
 
-    // Do NOT filter or re-fetch data. Just update X-axis viewport limits.
+    // 4. Update X-axis viewport range only, without modifying the chart data
     if (assetMainChartInstance) {
         assetMainChartInstance.options.scales.x.min = minTimestamp;
         assetMainChartInstance.options.scales.x.max = maxTimestamp;
