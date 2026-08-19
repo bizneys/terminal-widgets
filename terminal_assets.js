@@ -576,16 +576,6 @@
         if (assetSubChartInstance && assetSubChartInstance.scales.x) {
             assetSubChartInstance.options.scales.x.min = min;
             assetSubChartInstance.options.scales.x.max = max;
-
-            if (assetSubChartInstance.options.scales.y) {
-                assetSubChartInstance.options.scales.y.min = undefined;
-                assetSubChartInstance.options.scales.y.max = undefined;
-            }
-            if (assetSubChartInstance.scales.y) {
-                assetSubChartInstance.scales.y.options.min = undefined;
-                assetSubChartInstance.scales.y.options.max = undefined;
-            }
-
             assetSubChartInstance.update('none');
         }
     }
@@ -594,16 +584,6 @@
         if (assetMainChartInstance && assetMainChartInstance.scales.x) {
             assetMainChartInstance.options.scales.x.min = min;
             assetMainChartInstance.options.scales.x.max = max;
-
-            if (assetMainChartInstance.options.scales.y) {
-                assetMainChartInstance.options.scales.y.min = undefined;
-                assetMainChartInstance.options.scales.y.max = undefined;
-            }
-            if (assetMainChartInstance.scales.y) {
-                assetMainChartInstance.scales.y.options.min = undefined;
-                assetMainChartInstance.scales.y.options.max = undefined;
-            }
-
             assetMainChartInstance.update('none');
         }
     }
