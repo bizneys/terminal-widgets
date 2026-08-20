@@ -458,7 +458,11 @@
                 if (scaleFactor > 0.05) {
                     const center = (startYMin + startYMax) / 2;
                     const newHalfRange = (rangeY * scaleFactor) / 2;
-                    chart.options.scales.y.min = Math.max(0, center - newHalfRange);
+                    const calculatedMin = center - newHalfRange;
+                    
+                    /* Clamp to 0 only if beginAtZero option is explicitly set to true (e.g., Volume tab) */
+                    const shouldBeginAtZero = chart.options.scales.y.beginAtZero;
+                    chart.options.scales.y.min = shouldBeginAtZero ? Math.max(0, calculatedMin) : calculatedMin;
                     chart.options.scales.y.max = center + newHalfRange;
                     chart.update('none');
                 }
@@ -510,7 +514,11 @@
                 const range = currentMax - currentMin;
                 const center = (currentMin + currentMax) / 2;
                 const newHalfRange = (range * zoomFactor) / 2;
-                chart.options.scales.y.min = Math.max(0, center - newHalfRange);
+                const calculatedMin = center - newHalfRange;
+
+                /* Clamp to 0 only if beginAtZero option is explicitly set to true (e.g., Volume tab) */
+                const shouldBeginAtZero = chart.options.scales.y.beginAtZero;
+                chart.options.scales.y.min = shouldBeginAtZero ? Math.max(0, calculatedMin) : calculatedMin;
                 chart.options.scales.y.max = center + newHalfRange;
                 chart.update('none');
             } else {
@@ -609,7 +617,7 @@ function renderAssetMainChart(data) {
     const ctx = document.getElementById('assetMainCanvas').getContext('2d');
     if (assetMainChartInstance) assetMainChartInstance.destroy();
 
-    // ALWAYS use full raw dataset range for scale limits
+    /* ALWAYS use full raw dataset range for scale limits */
     const minTimestamp = data[0].x;
     const maxTimestamp = data[data.length - 1].x;
 
@@ -646,7 +654,14 @@ function renderAssetMainChart(data) {
                 y: {
                     position: 'right',
                     grid: { display: true, color: '#f1f5f9' },
-                    ticks: { font: { size: 9 }, padding: 4 },
+                    ticks: {
+                        font: { size: 9 },
+                        padding: 4,
+                        callback: function(val) {
+                            /* Format float values to avoid long trailing decimals on axis ticks */
+                            return typeof val === 'number' ? val.toFixed(2) : val;
+                        }
+                    },
                     afterFit: (axis) => { axis.width = 55; }
                 }
             }
@@ -788,13 +803,20 @@ function renderAssetSubChart(data, tab) {
                     ticks: {
                         font: { size: 8 },
                         callback: function(val) {
+                            if (typeof val !== 'number') return val;
                             if (tab === 'volume') {
                                 return compactVolumeFormatter.format(val);
                             }
                             if (tab === 'alpha') {
                                 return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
                             }
-                            return val;
+                            if (tab === 'premium') {
+                                return val.toFixed(2);
+                            }
+                            if (tab === 'exposures') {
+                                return val.toFixed(2);
+                            }
+                            return val.toFixed(2);
                         }
                     },
                     afterFit: (axis) => { axis.width = 55; }
@@ -812,7 +834,7 @@ window.setAssetSubTab = function(tab, btnElem) {
     currentSubTab = tab;
     document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
-    // Always render sub chart using full raw dataset
+    /* Always render sub chart using full raw dataset */
     if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab);
 };
 
@@ -843,19 +865,19 @@ window.setAssetTimeRange = function(range, btnElem) {
     document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
 
-    // 1. Return if the full raw dataset does not exist
+    /* 1. Return if the full raw dataset does not exist */
     if (!assetRawSeries || !assetRawSeries.length) return;
 
-    // 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset
+    /* 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset */
     if (assetMainChartInstance.data.datasets[0].data.length !== assetRawSeries.length) {
         assetMainChartInstance.data.datasets[0].data = assetRawSeries.map(d => ({ x: d.x, y: d.adj_close }));
-        // Reassign full dataset to the sub chart as well
+        /* Reassign full dataset to the sub chart as well */
         if (assetSubChartInstance) {
             assetSubChartInstance.data.datasets = buildSubDatasets(assetRawSeries, currentSubTab);
         }
     }
 
-    // 3. Calculate start time (minTimestamp) to display based on the latest date
+    /* 3. Calculate start time (minTimestamp) to display based on the latest date */
     const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
     const latestDate = new Date(maxTimestamp);
     let startDate = new Date(latestDate);
@@ -864,11 +886,11 @@ window.setAssetTimeRange = function(range, btnElem) {
     else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
     else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
     else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-    else startDate = new Date(assetRawSeries[0].x); // Full start date for 'ALL' button
+    else startDate = new Date(assetRawSeries[0].x); /* Full start date for 'ALL' button */
 
     const minTimestamp = (range === 'ALL') ? assetRawSeries[0].x : startDate.getTime();
 
-    // 4. Update X-axis viewport range only, without modifying the chart data
+    /* 4. Update X-axis viewport range only, without modifying the chart data */
     if (assetMainChartInstance) {
         assetMainChartInstance.options.scales.x.min = minTimestamp;
         assetMainChartInstance.options.scales.x.max = maxTimestamp;
