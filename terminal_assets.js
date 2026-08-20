@@ -25,6 +25,9 @@
     let currentSubTab = 'premium';
     let isMAVisible = [true, false, false, false]; /* index 0 = price (always on), 1 = MA20, 2 = MA50, 3 = MA200 */
 
+    /* TradingView Style: Active timeframe mode for moving averages ('1D', '1W', '1M') */
+    let currentMATimeframe = '1D';
+
     /* ============================================================
      * Custom Chart.js plugins (registered once, reused by any chart
      * that opts in via its own `plugins.<id>` config block)
@@ -300,6 +303,7 @@
         /* Reset per-selection UI state */
         currentSubTab = 'premium';
         isMAVisible = [true, false, false, false];
+        currentMATimeframe = '1D';
         document.getElementById('chk-ma20').checked = false;
         document.getElementById('chk-ma50').checked = false;
         document.getElementById('chk-ma200').checked = false;
@@ -342,22 +346,35 @@
             });
     }
 
-    /* Simple moving average, computed client-side/on-demand (no server round-trip) */
+    /* Standard Simple Moving Average (SMA) calculation function */
     function computeMovingAverage(series, field, period) {
+        if (!series || !series.length) return new Array(0).fill(null);
+
         const result = new Array(series.length).fill(null);
         let windowSum = 0;
+
         for (let i = 0; i < series.length; i++) {
             windowSum += series[i][field];
-            if (i >= period) windowSum -= series[i - period][field];
-            if (i >= period - 1) result[i] = windowSum / period;
+            if (i >= period) {
+                windowSum -= series[i - period][field];
+            }
+            if (i >= period - 1) {
+                result[i] = windowSum / period;
+            }
         }
         return result;
     }
 
+    /* Calculates MA periods based on selected timeframe scale (1D = 1x, 1W = 5x, 1M = 20x) */
     function attachMovingAverages(series) {
-        const ma20 = computeMovingAverage(series, 'adj_close', 20);
-        const ma50 = computeMovingAverage(series, 'adj_close', 50);
-        const ma200 = computeMovingAverage(series, 'adj_close', 200);
+        let multiplier = 1;
+        if (currentMATimeframe === '1W') multiplier = 5;
+        if (currentMATimeframe === '1M') multiplier = 20;
+
+        const ma20 = computeMovingAverage(series, 'adj_close', 20 * multiplier);
+        const ma50 = computeMovingAverage(series, 'adj_close', 50 * multiplier);
+        const ma200 = computeMovingAverage(series, 'adj_close', 200 * multiplier);
+
         series.forEach((d, i) => {
             d.ma20 = ma20[i];
             d.ma50 = ma50[i];
@@ -365,7 +382,52 @@
         });
     }
 
-    /* ---- Shared drag / wheel / pinch interaction handler (same pattern as the Market Terminal) ---- */
+    /* Range selector handler supporting automatic TradingView-style MA timeframe switching */
+    window.filterAssetRange = function(rangeKey, btn) {
+        ...
+        if (rangeKey === '1M' || rangeKey === '3M') currentMATimeframe = '1D';
+        else if (rangeKey === '6M' || rangeKey === '1Y') currentMATimeframe = '1W';
+        else if (rangeKey === 'ALL') currentMATimeframe = '1M';
+    
+        if (!assetRawSeries || !assetRawSeries.length) return;
+    
+        attachMovingAverages(assetRawSeries);
+    
+        assetFilteredSeries = assetRawSeries.filter(d => d.x >= minTimestamp);
+    
+        renderAssetMainChart(assetFilteredSeries);
+        renderAssetSubChart(assetFilteredSeries, currentSubTab);
+    };
+
+        /* Recompute MA across full dataset before filtering slice */
+        attachMovingAverages(assetRawSeries);
+
+        const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+        let minTimestamp = 0;
+        const now = new Date(maxTimestamp);
+
+        if (rangeKey === '1M') minTimestamp = new Date(now).setMonth(now.getMonth() - 1);
+        else if (rangeKey === '3M') minTimestamp = new Date(now).setMonth(now.getMonth() - 3);
+        else if (rangeKey === '6M') minTimestamp = new Date(now).setMonth(now.getMonth() - 6);
+        else if (rangeKey === '1Y') minTimestamp = new Date(now).setFullYear(now.getFullYear() - 1);
+        else if (rangeKey === 'ALL') minTimestamp = 0;
+
+        assetFilteredSeries = assetRawSeries.filter(d => d.x >= minTimestamp);
+
+        renderAssetMainChart(assetFilteredSeries);
+        renderAssetSubChart(assetFilteredSeries, currentSubTab);
+    };
+
+    /* Toggle visibility for MA datasets */
+    window.toggleAssetMA = function(index, checked) {
+        isMAVisible[index] = checked;
+        if (assetMainChartInstance) {
+            assetMainChartInstance.data.datasets[index].hidden = !checked;
+            assetMainChartInstance.update();
+        }
+    };
+
+/* ---- Shared drag / wheel / pinch interaction handler ---- */
     function attachChartDragInteractions(canvasId, chartGetter, onZoomChange) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
@@ -377,8 +439,6 @@
         let startXMin = 0, startXMax = 0, startYMin = 0, startYMax = 0;
 
         let touchPinchInitialDistance = 0;
-        let initialTouchXMin = 0;
-        let initialTouchXMax = 0;
 
         const getTouchDistance = (e) => {
             const t1 = e.touches[0];
@@ -536,8 +596,6 @@
                 const chart = chartGetter();
                 if (!chart) return;
                 touchPinchInitialDistance = getTouchDistance(e);
-                initialTouchXMin = chart.scales.x.min;
-                initialTouchXMax = chart.scales.x.max;
             }
         }, { passive: true });
 
@@ -551,8 +609,8 @@
                 const currentDistance = getTouchDistance(e);
                 const scaleRatio = touchPinchInitialDistance / currentDistance;
 
-                const currentRange = initialTouchXMax - initialTouchXMin;
-                const centerTime = (initialTouchXMin + initialTouchXMax) / 2;
+                const currentRange = chart.scales.x.max - chart.scales.x.min;
+                const centerTime = (chart.scales.x.min + chart.scales.x.max) / 2;
                 const newHalfRange = (currentRange * scaleRatio) / 2;
 
                 const newMin = centerTime - newHalfRange;
@@ -572,275 +630,218 @@
         });
     }
 
-function syncAssetSubZoom(min, max) {
-    if (assetSubChartInstance && assetSubChartInstance.scales.x) {
-        assetSubChartInstance.options.scales.x.min = min;
-        assetSubChartInstance.options.scales.x.max = max;
-        assetSubChartInstance.scales.x.options.min = min;
-        assetSubChartInstance.scales.x.options.max = max;
-        assetSubChartInstance.update('none');
-    }
-}
-
-function syncAssetMainZoom(min, max) {
-    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
-        assetMainChartInstance.options.scales.x.min = min;
-        assetMainChartInstance.options.scales.x.max = max;
-        assetMainChartInstance.scales.x.options.min = min;
-        assetMainChartInstance.scales.x.options.max = max;
-        assetMainChartInstance.update('none');
-    }
-}
-
-/* ---- Main Panel: Price + Moving Averages ---- */
-function renderAssetMainChart(data) {
-    const ctx = document.getElementById('assetMainCanvas').getContext('2d');
-    if (assetMainChartInstance) assetMainChartInstance.destroy();
-
-    // ALWAYS use full raw dataset range for scale limits
-    const minTimestamp = data[0].x;
-    const maxTimestamp = data[data.length - 1].x;
-
-    assetMainChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            datasets: [
-                { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
-                { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            interaction: { mode: 'index', intersect: false },
-            layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
-            plugins: {
-                legend: { display: false },
-                tooltip: { enabled: false },
-                brandWatermark: { enabled: true }
-            },
-            scales: {
-                x: {
-                    type: 'time',
-                    min: minTimestamp,
-                    max: maxTimestamp,
-                    ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
-                    grid: { display: true, color: '#f1f5f9' },
-                    afterFit: (axis) => { axis.height = 0; }
-                },
-                y: {
-                    position: 'right',
-                    grid: { display: true, color: '#f1f5f9' },
-                    ticks: { font: { size: 9 }, padding: 4 },
-                    afterFit: (axis) => { axis.width = 55; }
-                }
-            }
+    function syncAssetSubZoom(min, max) {
+        if (assetSubChartInstance && assetSubChartInstance.scales.x) {
+            assetSubChartInstance.options.scales.x.min = min;
+            assetSubChartInstance.options.scales.x.max = max;
+            assetSubChartInstance.update('none');
         }
-    });
-
-    isMAVisible.forEach((visible, idx) => {
-        assetMainChartInstance.setDatasetVisibility(idx, visible);
-    });
-    assetMainChartInstance.update('none');
-
-    attachChartDragInteractions('assetMainCanvas', () => assetMainChartInstance, (min, max) => {
-        syncAssetSubZoom(min, max);
-    });
-}
-
-window.toggleMA = function(index) {
-    if (!assetMainChartInstance) return;
-    const isVisible = assetMainChartInstance.isDatasetVisible(index);
-    if (isVisible) {
-        assetMainChartInstance.hide(index);
-        isMAVisible[index] = false;
-    } else {
-        assetMainChartInstance.show(index);
-        isMAVisible[index] = true;
-    }
-};
-
-/* ---- Sub Panel: Premium / Exposures / Alpha / Volume (tab-switchable) ---- */
-function buildSubDatasets(data, tab) {
-    if (tab === 'exposures') {
-        return [
-            { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
-        ];
-    }
-    if (tab === 'alpha') {
-        return [
-            { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
-        ];
-    }
-    if (tab === 'volume') {
-        return [
-            { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
-        ];
-    }
-    return [
-        { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
-    ];
-}
-
-function thresholdsForTab(tab) {
-    if (tab === 'volume') return [];
-    if (tab === 'premium') return [-1, 0, 1];
-    return [0];
-}
-
-function renderSubTabLegend(tab) {
-    const legendEl = document.getElementById('subTabLegend');
-    if (tab === 'exposures') {
-        legendEl.innerHTML = `
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
-        `;
-    } else if (tab === 'premium') {
-        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
-    } else {
-        legendEl.innerHTML = '';
-    }
-}
-
-function renderAssetSubChart(data, tab) {
-    const ctx = document.getElementById('assetSubCanvas').getContext('2d');
-    if (assetSubChartInstance) assetSubChartInstance.destroy();
-
-    renderSubTabLegend(tab);
-
-    let currentMin = data[0].x;
-    let currentMax = data[data.length - 1].x;
-
-    if (assetMainChartInstance && assetMainChartInstance.scales.x) {
-        currentMin = assetMainChartInstance.scales.x.min;
-        currentMax = assetMainChartInstance.scales.x.max;
     }
 
-    const baseType = tab === 'volume' ? 'bar' : 'line';
+    function syncAssetMainZoom(min, max) {
+        if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+            assetMainChartInstance.options.scales.x.min = min;
+            assetMainChartInstance.options.scales.x.max = max;
+            assetMainChartInstance.update('none');
+        }
+    }
 
-    assetSubChartInstance = new Chart(ctx, {
-        type: baseType,
-        data: { datasets: buildSubDatasets(data, tab) },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            interaction: { mode: 'index', intersect: false },
-            layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
-            plugins: {
-                legend: { display: false },
-                tooltip: { enabled: false },
-                thresholdLines: { lines: thresholdsForTab(tab) }
+    /* ---- Main Panel: Price + Moving Averages ---- */
+    function renderAssetMainChart(data) {
+        const ctx = document.getElementById('assetMainCanvas').getContext('2d');
+        if (assetMainChartInstance) assetMainChartInstance.destroy();
+
+        const minTimestamp = data[0].x;
+        const maxTimestamp = data[data.length - 1].x;
+
+        assetMainChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
+                    { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
+                    { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
+                    { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
+                ]
             },
-            scales: {
-                x: {
-                    type: 'time',
-                    min: currentMin,
-                    max: currentMax,
-                    ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
-                    grid: { display: true, color: '#f1f5f9' }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'index', intersect: false },
+                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false },
+                    brandWatermark: { enabled: true }
                 },
-                y: {
-                    position: 'right',
-                    beginAtZero: tab === 'volume',
-                    grid: { display: true, color: '#f1f5f9' },
-                    ticks: {
-                        font: { size: 8 },
-                        callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: minTimestamp,
+                        max: maxTimestamp,
+                        ticks: { color: 'transparent', font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                        grid: { display: true, color: '#f1f5f9' },
+                        afterFit: (axis) => { axis.height = 0; }
                     },
-                    afterFit: (axis) => { axis.width = 55; }
+                    y: {
+                        position: 'right',
+                        grid: { display: true, color: '#f1f5f9' },
+                        ticks: { font: { size: 9 }, padding: 4 },
+                        afterFit: (axis) => { axis.width = 55; }
+                    }
                 }
             }
-        }
-    });
+        });
 
-    attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
-        syncAssetMainZoom(min, max);
-    });
-}
-
-window.setAssetSubTab = function(tab, btnElem) {
-    currentSubTab = tab;
-    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
-    if (btnElem) btnElem.classList.add('active');
-    // Always render sub chart using full raw dataset
-    if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab);
-};
-
-/* ---- Shared Range / Zoom Controls ---- */
-window.resetAssetChartZoom = function() {
-    if (!assetRawSeries.length) return;
-    const minTimestamp = assetRawSeries[0].x;
-    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
-
-    if (assetMainChartInstance) {
-        assetMainChartInstance.options.scales.x.min = minTimestamp;
-        assetMainChartInstance.options.scales.x.max = maxTimestamp;
-        assetMainChartInstance.options.scales.y.min = undefined;
-        assetMainChartInstance.options.scales.y.max = undefined;
-        assetMainChartInstance.update();
-    }
-    if (assetSubChartInstance) {
-        assetSubChartInstance.options.scales.x.min = minTimestamp;
-        assetSubChartInstance.options.scales.x.max = maxTimestamp;
-        assetSubChartInstance.options.scales.y.min = undefined;
-        assetSubChartInstance.options.scales.y.max = undefined;
-        assetSubChartInstance.update();
-    }
-};
-
-/* ---- Time Range Selector (Fetch/Keep FULL data, update view bounds only) ---- */
-window.setAssetTimeRange = function(range, btnElem) {
-    document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
-    if (btnElem) btnElem.classList.add('active');
-
-    // 1. Return if the full raw dataset does not exist
-    if (!assetRawSeries || !assetRawSeries.length) return;
-
-    // 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset
-    if (assetMainChartInstance.data.datasets[0].data.length !== assetRawSeries.length) {
-        assetMainChartInstance.data.datasets[0].data = assetRawSeries.map(d => ({ x: d.x, y: d.adj_close }));
-        // Reassign full dataset to the sub chart as well
-        if (assetSubChartInstance) {
-            assetSubChartInstance.data.datasets = buildSubDatasets(assetRawSeries, currentSubTab);
-        }
-    }
-
-    // 3. Calculate start time (minTimestamp) to display based on the latest date
-    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
-    const latestDate = new Date(maxTimestamp);
-    let startDate = new Date(latestDate);
-
-    if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
-    else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
-    else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
-    else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-    else startDate = new Date(assetRawSeries[0].x); // Full start date for 'ALL' button
-
-    const minTimestamp = (range === 'ALL') ? assetRawSeries[0].x : startDate.getTime();
-
-    // 4. Update X-axis viewport range only, without modifying the chart data
-    if (assetMainChartInstance) {
-        assetMainChartInstance.options.scales.x.min = minTimestamp;
-        assetMainChartInstance.options.scales.x.max = maxTimestamp;
+        isMAVisible.forEach((visible, idx) => {
+            assetMainChartInstance.setDatasetVisibility(idx, visible);
+        });
         assetMainChartInstance.update('none');
+
+        attachChartDragInteractions('assetMainCanvas', () => assetMainChartInstance, (min, max) => {
+            syncAssetSubZoom(min, max);
+        });
     }
 
-    if (assetSubChartInstance) {
-        assetSubChartInstance.options.scales.x.min = minTimestamp;
-        assetSubChartInstance.options.scales.x.max = maxTimestamp;
-        assetSubChartInstance.update('none');
-    }
-};
+    window.toggleMA = function(index) {
+        if (!assetMainChartInstance) return;
+        const isVisible = assetMainChartInstance.isDatasetVisible(index);
+        if (isVisible) {
+            assetMainChartInstance.hide(index);
+            isMAVisible[index] = false;
+        } else {
+            assetMainChartInstance.show(index);
+            isMAVisible[index] = true;
+        }
+    };
 
-document.addEventListener("DOMContentLoaded", initScreener);
-initScreener();
+    /* ---- Sub Panel: Premium / Exposures / Alpha / Volume ---- */
+    function buildSubDatasets(data, tab) {
+        if (tab === 'exposures') {
+            return [
+                { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
+                { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
+            ];
+        }
+        if (tab === 'alpha') {
+            return [
+                { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
+            ];
+        }
+        if (tab === 'volume') {
+            return [
+                { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
+            ];
+        }
+        return [
+            { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
+        ];
+    }
+
+    function thresholdsForTab(tab) {
+        if (tab === 'volume') return [];
+        if (tab === 'premium') return [-1, 0, 1];
+        return [0];
+    }
+
+    function renderSubTabLegend(tab) {
+        const legendEl = document.getElementById('subTabLegend');
+        if (!legendEl) return;
+        if (tab === 'exposures') {
+            legendEl.innerHTML = `
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
+                <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
+            `;
+        } else if (tab === 'premium') {
+            legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
+        } else {
+            legendEl.innerHTML = '';
+        }
+    }
+
+    function renderAssetSubChart(data, tab) {
+        const ctx = document.getElementById('assetSubCanvas').getContext('2d');
+        if (assetSubChartInstance) assetSubChartInstance.destroy();
+
+        renderSubTabLegend(tab);
+
+        let currentMin = data[0].x;
+        let currentMax = data[data.length - 1].x;
+
+        if (assetMainChartInstance && assetMainChartInstance.scales.x) {
+            currentMin = assetMainChartInstance.scales.x.min;
+            currentMax = assetMainChartInstance.scales.x.max;
+        }
+
+        const baseType = tab === 'volume' ? 'bar' : 'line';
+
+        assetSubChartInstance = new Chart(ctx, {
+            type: baseType,
+            data: { datasets: buildSubDatasets(data, tab) },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'index', intersect: false },
+                layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false },
+                    thresholdLines: { lines: thresholdsForTab(tab) }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: currentMin,
+                        max: currentMax,
+                        ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true },
+                        grid: { display: true, color: '#f1f5f9' }
+                    },
+                    y: {
+                        position: 'right',
+                        beginAtZero: tab === 'volume',
+                        grid: { display: true, color: '#f1f5f9' },
+                        ticks: {
+                            font: { size: 8 },
+                            callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
+                        },
+                        afterFit: (axis) => { axis.width = 55; }
+                    }
+                }
+            }
+        });
+
+        attachChartDragInteractions('assetSubCanvas', () => assetSubChartInstance, (min, max) => {
+            syncAssetMainZoom(min, max);
+        });
+    }
+
+    window.setAssetSubTab = function(tab, btnElem) {
+        currentSubTab = tab;
+        document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+        if (btnElem) btnElem.classList.add('active');
+        if (assetRawSeries.length) renderAssetSubChart(assetRawSeries, tab);
+    };
+
+    /* ---- Unified Range / Zoom Controls ---- */
+    window.resetAssetChartZoom = function() {
+        if (!assetRawSeries.length) return;
+        filterAssetRange('ALL', document.querySelector('.range-selector .btn-range:last-child'));
+    };
+
+    /* Aliasing time range selector to existing TradingView MA scale logic */
+    window.setAssetTimeRange = function(range, btnElem) {
+        filterAssetRange(range, btnElem);
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener("DOMContentLoaded", initScreener);
+    } else {
+        initScreener();
+    }
 })();
