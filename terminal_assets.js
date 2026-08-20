@@ -213,7 +213,7 @@
                         { field: "beta_f", headerName: "\u03B2 F", headerTooltip: NARRATIVE_FACTOR_NAMES.F, minWidth: 65, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) }
                     ]
                 },
-                { field: "alpha", headerName: "\u03B1 Alpha", headerTooltip: "Return unexplained by narrative factor exposure", minWidth: 90, flex: 1, valueFormatter: signedNumberFormatter(3), cellStyle: signedCellStyle },
+                { field: "alpha", headerName: "\u03B1 Alpha (%)", headerTooltip: "Return unexplained by narrative factor exposure", minWidth: 90, flex: 1, valueFormatter: params => {if (params.value == null) return '-';  const pct = params.value * 100; return (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';}, cellStyle: signedCellStyle },
                 { field: "narrative_premium", headerName: "Narrative Premium", minWidth: 110, flex: 1.1, valueFormatter: signedNumberFormatter(3), cellStyle: signedCellStyle }
             ],
             rowData: data,
@@ -675,7 +675,7 @@ function buildSubDatasets(data, tab) {
     }
     if (tab === 'alpha') {
         return [
-            { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha != null ? d.alpha * 100 : null })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
+            { label: '\u03B1 Alpha (%)', data: data.map(d => ({ x: d.x, y: d.alpha != null ? d.alpha * 100 : null })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
         ];
     }
     if (tab === 'volume') {
