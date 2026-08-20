@@ -25,6 +25,9 @@
     let currentSubTab = 'premium';
     let isMAVisible = [true, false, false, false]; /* index 0 = price (always on), 1 = MA20, 2 = MA50, 3 = MA200 */
 
+    /* TradingView Style: Active timeframe mode for moving averages ('1D', '1W', '1M') */
+    let currentMATimeframe = '1D';
+
     /* ============================================================
      * Custom Chart.js plugins (registered once, reused by any chart
      * that opts in via its own `plugins.<id>` config block)
@@ -300,6 +303,7 @@
         /* Reset per-selection UI state */
         currentSubTab = 'premium';
         isMAVisible = [true, false, false, false];
+        currentMATimeframe = '1D';
         document.getElementById('chk-ma20').checked = false;
         document.getElementById('chk-ma50').checked = false;
         document.getElementById('chk-ma200').checked = false;
@@ -342,18 +346,74 @@
             });
     }
 
-    /* Simple moving average, computed client-side/on-demand (no server round-trip) */
+    /* Helper function to generate time-grouping key for weekly or monthly MA calculation */
+    function getTimeframeKey(timestamp, timeframe) {
+        const date = new Date(timestamp);
+        if (timeframe === '1W') {
+            const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+        } else if (timeframe === '1M') {
+            return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+        }
+        return null;
+    }
+
+    /* TradingView Style: Moving average calculation dynamically adjusting to active timeframe */
     function computeMovingAverage(series, field, period) {
+        if (!series || !series.length) return new Array(0).fill(null);
+
+        if (currentMATimeframe === '1D') {
+            const result = new Array(series.length).fill(null);
+            let windowSum = 0;
+            for (let i = 0; i < series.length; i++) {
+                windowSum += series[i][field];
+                if (i >= period) windowSum -= series[i - period][field];
+                if (i >= period - 1) result[i] = windowSum / period;
+            }
+            return result;
+        }
+
+        const periodGroups = new Map();
+        series.forEach((d, index) => {
+            const key = getTimeframeKey(d.x, currentMATimeframe);
+            if (!periodGroups.has(key)) periodGroups.set(key, []);
+            periodGroups.get(key).push({ index, value: d[field] });
+        });
+
+        const resampledEndIndices = [];
+        const resampledCloses = [];
+        periodGroups.forEach((items) => {
+            const lastItem = items[items.length - 1];
+            resampledEndIndices.push(lastItem.index);
+            resampledCloses.push(lastItem.value);
+        });
+
+        const resampledMA = new Array(resampledCloses.length).fill(null);
+        let sum = 0;
+        for (let i = 0; i < resampledCloses.length; i++) {
+            sum += resampledCloses[i];
+            if (i >= period) sum -= resampledCloses[i - period];
+            if (i >= period - 1) resampledMA[i] = sum / period;
+        }
+
         const result = new Array(series.length).fill(null);
-        let windowSum = 0;
+        let currentMA = null;
+        let rIdx = 0;
         for (let i = 0; i < series.length; i++) {
-            windowSum += series[i][field];
-            if (i >= period) windowSum -= series[i - period][field];
-            if (i >= period - 1) result[i] = windowSum / period;
+            if (rIdx < resampledEndIndices.length && i === resampledEndIndices[rIdx]) {
+                currentMA = resampledMA[rIdx];
+                rIdx++;
+            }
+            result[i] = currentMA;
         }
         return result;
     }
 
+    /* Calculates and attaches timeframe-aware MA values to series */
     function attachMovingAverages(series) {
         const ma20 = computeMovingAverage(series, 'adj_close', 20);
         const ma50 = computeMovingAverage(series, 'adj_close', 50);
@@ -364,6 +424,48 @@
             d.ma200 = ma200[i];
         });
     }
+
+    /* Range selector handler supporting automatic TradingView-style MA timeframe switching */
+    window.filterAssetRange = function(rangeKey, btn) {
+        if (btn) {
+            document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        if (rangeKey === '1M') currentMATimeframe = '1D';
+        else if (rangeKey === '3M' || rangeKey === '6M' || rangeKey === '1Y') currentMATimeframe = '1W';
+        else if (rangeKey === 'ALL') currentMATimeframe = '1M';
+
+        if (!assetRawSeries || !assetRawSeries.length) return;
+
+        const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+        let minTimestamp = 0;
+
+        const now = new Date(maxTimestamp);
+        if (rangeKey === '1M') minTimestamp = new Date(now).setMonth(now.getMonth() - 1);
+        else if (rangeKey === '3M') minTimestamp = new Date(now).setMonth(now.getMonth() - 3);
+        else if (rangeKey === '6M') minTimestamp = new Date(now).setMonth(now.getMonth() - 6);
+        else if (rangeKey === '1Y') minTimestamp = new Date(now).setFullYear(now.getFullYear() - 1);
+        else if (rangeKey === 'ALL') minTimestamp = 0;
+
+        attachMovingAverages(assetRawSeries);
+        assetFilteredSeries = assetRawSeries.filter(d => d.x >= minTimestamp);
+
+        renderAssetMainChart(assetFilteredSeries);
+        renderAssetSubChart(assetFilteredSeries, currentSubTab);
+    };
+
+    /* Toggle visibility for MA datasets */
+    window.toggleAssetMA = function(index, checked) {
+        isMAVisible[index] = checked;
+        if (assetMainChartInstance) {
+            assetMainChartInstance.data.datasets[index].hidden = !checked;
+            assetMainChartInstance.update();
+        }
+    };
+
+    // ... Rest of your Chart rendering functions (renderAssetMainChart, renderAssetSubChart) follow below ...
+})();
 
     /* ---- Shared drag / wheel / pinch interaction handler (same pattern as the Market Terminal) ---- */
     function attachChartDragInteractions(canvasId, chartGetter, onZoomChange) {
