@@ -213,7 +213,19 @@
                         { field: "beta_f", headerName: "\u03B2 F", headerTooltip: NARRATIVE_FACTOR_NAMES.F, minWidth: 65, flex: 0.8, valueFormatter: p => p.value?.toFixed(2) }
                     ]
                 },
-                { field: "alpha", headerName: "\u03B1 Alpha (%)", headerTooltip: "Return unexplained by narrative factor exposure", minWidth: 90, flex: 1, valueFormatter: params => {if (params.value == null) return '-';  const pct = params.value * 100; return (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';}, cellStyle: signedCellStyle },
+                { 
+                    field: "alpha", 
+                    headerName: "\u03B1 Alpha (%)", 
+                    headerTooltip: "Return unexplained by narrative factor exposure", 
+                    minWidth: 90, 
+                    flex: 1, 
+                    valueFormatter: params => {
+                        if (params.value == null) return '-';
+                        const pct = params.value * 100;
+                        return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+                    }, 
+                    cellStyle: signedCellStyle 
+                },
                 { field: "narrative_premium", headerName: "Narrative Premium", minWidth: 110, flex: 1.1, valueFormatter: signedNumberFormatter(3), cellStyle: signedCellStyle }
             ],
             rowData: data,
@@ -705,6 +717,8 @@ function renderSubTabLegend(tab) {
         `;
     } else if (tab === 'premium') {
         legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
+    } else if (tab === 'alpha') {
+        legendEl.innerHTML = `<span class="check-label" title="Daily Excess Return in Percent">% per day</span>`;
     } else {
         legendEl.innerHTML = '';
     }
@@ -737,7 +751,26 @@ function renderAssetSubChart(data, tab) {
             layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
             plugins: {
                 legend: { display: false },
-                tooltip: { enabled: false },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                const val = context.parsed.y;
+                                if (tab === 'alpha') {
+                                    label += (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
+                                } else if (tab === 'volume') {
+                                    label += compactVolumeFormatter.format(val);
+                                } else {
+                                    label += (val >= 0 ? '+' : '') + val.toFixed(3);
+                                }
+                            }
+                            return label;
+                        }
+                    }
+                },
                 thresholdLines: { lines: thresholdsForTab(tab) }
             },
             scales: {
@@ -754,7 +787,15 @@ function renderAssetSubChart(data, tab) {
                     grid: { display: true, color: '#f1f5f9' },
                     ticks: {
                         font: { size: 8 },
-                        callback: tab === 'volume' ? (val) => compactVolumeFormatter.format(val) : undefined
+                        callback: function(val) {
+                            if (tab === 'volume') {
+                                return compactVolumeFormatter.format(val);
+                            }
+                            if (tab === 'alpha') {
+                                return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+                            }
+                            return val;
+                        }
                     },
                     afterFit: (axis) => { axis.width = 55; }
                 }
