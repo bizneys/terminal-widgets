@@ -675,7 +675,7 @@ function buildSubDatasets(data, tab) {
     }
     if (tab === 'alpha') {
         return [
-            { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
+            { label: '\u03B1 Alpha', data: data.map(d => ({ x: d.x, y: d.alpha != null ? d.alpha * 100 : null })), borderColor: '#2563eb', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.06)' }
         ];
     }
     if (tab === 'volume') {
