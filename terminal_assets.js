@@ -346,78 +346,35 @@
             });
     }
 
-    /* Helper function to generate time-grouping key for weekly or monthly MA calculation */
-    function getTimeframeKey(timestamp, timeframe) {
-        const date = new Date(timestamp);
-        if (timeframe === '1W') {
-            const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-            const dayNum = d.getUTCDay() || 7;
-            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-            return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-        } else if (timeframe === '1M') {
-            return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-        }
-        return null;
-    }
-
-    /* TradingView Style: Moving average calculation dynamically adjusting to active timeframe */
+    /* Standard Simple Moving Average (SMA) calculation function */
     function computeMovingAverage(series, field, period) {
         if (!series || !series.length) return new Array(0).fill(null);
 
-        if (currentMATimeframe === '1D') {
-            const result = new Array(series.length).fill(null);
-            let windowSum = 0;
-            for (let i = 0; i < series.length; i++) {
-                windowSum += series[i][field];
-                if (i >= period) windowSum -= series[i - period][field];
-                if (i >= period - 1) result[i] = windowSum / period;
-            }
-            return result;
-        }
-
-        const periodGroups = new Map();
-        series.forEach((d, index) => {
-            const key = getTimeframeKey(d.x, currentMATimeframe);
-            if (!periodGroups.has(key)) periodGroups.set(key, []);
-            periodGroups.get(key).push({ index, value: d[field] });
-        });
-
-        const resampledEndIndices = [];
-        const resampledCloses = [];
-        periodGroups.forEach((items) => {
-            const lastItem = items[items.length - 1];
-            resampledEndIndices.push(lastItem.index);
-            resampledCloses.push(lastItem.value);
-        });
-
-        const resampledMA = new Array(resampledCloses.length).fill(null);
-        let sum = 0;
-        for (let i = 0; i < resampledCloses.length; i++) {
-            sum += resampledCloses[i];
-            if (i >= period) sum -= resampledCloses[i - period];
-            if (i >= period - 1) resampledMA[i] = sum / period;
-        }
-
         const result = new Array(series.length).fill(null);
-        let currentMA = null;
-        let rIdx = 0;
+        let windowSum = 0;
+
         for (let i = 0; i < series.length; i++) {
-            if (rIdx < resampledEndIndices.length && i === resampledEndIndices[rIdx]) {
-                currentMA = resampledMA[rIdx];
-                rIdx++;
+            windowSum += series[i][field];
+            if (i >= period) {
+                windowSum -= series[i - period][field];
             }
-            result[i] = currentMA;
+            if (i >= period - 1) {
+                result[i] = windowSum / period;
+            }
         }
         return result;
     }
 
-    /* Calculates and attaches timeframe-aware MA values to series */
+    /* Calculates MA periods based on selected timeframe scale (1D = 1x, 1W = 5x, 1M = 20x) */
     function attachMovingAverages(series) {
-        const ma20 = computeMovingAverage(series, 'adj_close', 20);
-        const ma50 = computeMovingAverage(series, 'adj_close', 50);
-        const ma200 = computeMovingAverage(series, 'adj_close', 200);
+        let multiplier = 1;
+        if (currentMATimeframe === '1W') multiplier = 5;
+        if (currentMATimeframe === '1M') multiplier = 20;
+
+        const ma20 = computeMovingAverage(series, 'adj_close', 20 * multiplier);
+        const ma50 = computeMovingAverage(series, 'adj_close', 50 * multiplier);
+        const ma200 = computeMovingAverage(series, 'adj_close', 200 * multiplier);
+
         series.forEach((d, i) => {
             d.ma20 = ma20[i];
             d.ma50 = ma50[i];
@@ -432,23 +389,30 @@
             btn.classList.add('active');
         }
 
-        if (rangeKey === '1M') currentMATimeframe = '1D';
-        else if (rangeKey === '3M' || rangeKey === '6M' || rangeKey === '1Y') currentMATimeframe = '1W';
-        else if (rangeKey === 'ALL') currentMATimeframe = '1M';
+        /* Adjust MA timeframe mode based on selected range */
+        if (rangeKey === '1M' || rangeKey === '3M') {
+            currentMATimeframe = '1D';
+        } else if (rangeKey === '6M' || rangeKey === '1Y') {
+            currentMATimeframe = '1W';
+        } else if (rangeKey === 'ALL') {
+            currentMATimeframe = '1M';
+        }
 
         if (!assetRawSeries || !assetRawSeries.length) return;
 
+        /* Recompute MA across full dataset before filtering slice */
+        attachMovingAverages(assetRawSeries);
+
         const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
         let minTimestamp = 0;
-
         const now = new Date(maxTimestamp);
+
         if (rangeKey === '1M') minTimestamp = new Date(now).setMonth(now.getMonth() - 1);
         else if (rangeKey === '3M') minTimestamp = new Date(now).setMonth(now.getMonth() - 3);
         else if (rangeKey === '6M') minTimestamp = new Date(now).setMonth(now.getMonth() - 6);
         else if (rangeKey === '1Y') minTimestamp = new Date(now).setFullYear(now.getFullYear() - 1);
         else if (rangeKey === 'ALL') minTimestamp = 0;
 
-        attachMovingAverages(assetRawSeries);
         assetFilteredSeries = assetRawSeries.filter(d => d.x >= minTimestamp);
 
         renderAssetMainChart(assetFilteredSeries);
