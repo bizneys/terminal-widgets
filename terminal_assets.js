@@ -713,7 +713,21 @@ function buildSubDatasets(data, tab) {
     }
     if (tab === 'volume') {
         return [
-            { type: 'bar', label: 'Volume', data: data.map(d => ({ x: d.x, y: d.volume })), backgroundColor: 'rgba(148, 163, 184, 0.55)', borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }
+            { 
+                type: 'bar', 
+                label: 'Volume', 
+                data: data.map(d => ({ x: d.x, y: d.volume })), 
+                backgroundColor: data.map((d, i) => {
+                    if (i === 0) return 'rgba(22, 163, 74, 0.5)';
+                    const prevClose = data[i - 1].adj_close;
+                    return d.adj_close >= prevClose 
+                        ? 'rgba(22, 163, 74, 0.5)'
+                        : 'rgba(220, 38, 38, 0.5)';
+                }),
+                borderWidth: 0, 
+                barPercentage: 1.0, 
+                categoryPercentage: 1.0 
+            }
         ];
     }
     return [
