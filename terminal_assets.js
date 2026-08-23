@@ -712,7 +712,7 @@ function buildSubDatasets(data, tab) {
 
 function thresholdsForTab(tab) {
     if (tab === 'volume') return [];
-    if (tab === 'premium') return [-1, 0, 1];
+    if (tab === 'premium') return [-2, 0, 2];
     return [0];
 }
 
@@ -726,7 +726,7 @@ function renderSubTabLegend(tab) {
             <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
         `;
     } else if (tab === 'premium') {
-        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 2)">&plusmn;1&sigma; band</span>`;
+        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 2)">&plusmn;2&sigma; band</span>`;
     } else if (tab === 'alpha') {
         legendEl.innerHTML = `<span class="check-label" title="Daily Excess Return in Percent">% per day</span>`;
     } else {
