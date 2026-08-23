@@ -620,10 +620,38 @@ function renderAssetMainChart(data) {
         type: 'line',
         data: {
             datasets: [
-                { label: 'Adj Close', data: data.map(d => ({ x: d.x, y: d.adj_close })), borderColor: '#4338ca', borderWidth: 2, pointRadius: 0 },
-                { label: 'MA20', data: data.map(d => ({ x: d.x, y: d.ma20 })), borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA50', data: data.map(d => ({ x: d.x, y: d.ma50 })), borderColor: '#8b5cf6', borderWidth: 1.2, pointRadius: 0 },
-                { label: 'MA200', data: data.map(d => ({ x: d.x, y: d.ma200 })), borderColor: '#0ea5e9', borderWidth: 1.2, pointRadius: 0 }
+                { 
+                    label: 'Adj Close', 
+                    data: data.map(d => ({ x: d.x, y: d.adj_close })), 
+                    borderColor: '#1e293b',
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    order: 1
+                },
+                { 
+                    label: 'MA20', 
+                    data: data.map(d => ({ x: d.x, y: d.ma20 })), 
+                    borderColor: 'rgba(245, 158, 11, 0.85)',
+                    borderWidth: 1.2, 
+                    pointRadius: 0,
+                    order: 2 
+                },
+                { 
+                    label: 'MA50', 
+                    data: data.map(d => ({ x: d.x, y: d.ma50 })), 
+                    borderColor: 'rgba(236, 72, 153, 0.85)',
+                    borderWidth: 1.2, 
+                    pointRadius: 0,
+                    order: 3 
+                },
+                { 
+                    label: 'MA200', 
+                    data: data.map(d => ({ x: d.x, y: d.ma200 })), 
+                    borderColor: 'rgba(2, 132, 199, 0.85)',
+                    borderWidth: 1.2, 
+                    pointRadius: 0,
+                    order: 4 
+                }
             ]
         },
         options: {
@@ -672,7 +700,6 @@ function renderAssetMainChart(data) {
         syncAssetSubZoom(min, max);
     });
 }
-
 window.toggleMA = function(index) {
     if (!assetMainChartInstance) return;
     const isVisible = assetMainChartInstance.isDatasetVisible(index);
