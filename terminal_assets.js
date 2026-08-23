@@ -31,7 +31,7 @@
      * ============================================================ */
 
     /* Draws thin dashed horizontal reference lines at fixed y-values (e.g. the zero line for
-       exposures / alpha, or the zero + one-std-dev band for narrative premium below). */
+       exposures / alpha, or the zero + two-std-dev band for narrative premium below). */
     const thresholdLinesPlugin = {
         id: 'thresholdLines',
         afterDraw(chart, args, opts) {
@@ -726,7 +726,7 @@ function renderSubTabLegend(tab) {
             <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
         `;
     } else if (tab === 'premium') {
-        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 1)">&plusmn;1&sigma; band</span>`;
+        legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 2)">&plusmn;1&sigma; band</span>`;
     } else if (tab === 'alpha') {
         legendEl.innerHTML = `<span class="check-label" title="Daily Excess Return in Percent">% per day</span>`;
     } else {
