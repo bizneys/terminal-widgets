@@ -483,7 +483,7 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        enabled: true,
+                        enabled: false,
                         mode: 'index',
                         intersect: false,
                         backgroundColor: '#111827',
@@ -592,7 +592,7 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        enabled: true,
+                        enabled: false,
                         mode: 'index',
                         intersect: false,
                         backgroundColor: '#111827',
