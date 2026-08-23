@@ -639,7 +639,7 @@ function renderAssetMainChart(data) {
             layout: { padding: { left: 10, right: 0, top: 0, bottom: 0 } },
             plugins: {
                 legend: { display: false },
-                tooltip: { enabled: false },
+                tooltip: { enabled: true },
                 brandWatermark: { enabled: true }
             },
             scales: {
