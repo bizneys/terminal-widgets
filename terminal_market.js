@@ -482,7 +482,39 @@
                 },
                 plugins: {
                     legend: { display: false },
-                    tooltip: { enabled: true },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: '#111827',
+                        titleFont: { size: 12, weight: 'bold', family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+                        bodyFont: { size: 11, family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        padding: { top: 8, bottom: 8, left: 10, right: 10 },
+                        cornerRadius: 4,
+                        displayColors: false, /* Hide default color swatch box to mirror Assets Screener */
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                if (!tooltipItems.length) return '';
+                                const date = new Date(tooltipItems[0].parsed.x);
+                                const dateStr = date.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                });
+                                return `${dateStr}, 9:00:00 a.m.`;
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label.includes('(')) {
+                                    label = label.split('(')[0].trim();
+                                }
+                                const val = context.parsed.y !== null ? context.parsed.y.toFixed(3) : '-';
+                                return `\u25A0 ${label}: ${val}`;
+                            }
+                        }
+                    },
                     brandWatermark: { enabled: true } /* Only stamped on the main chart to avoid visual clutter */
                 },
                 scales: {
@@ -559,7 +591,36 @@
                 },
                 plugins: {
                     legend: { display: false },
-                    tooltip: { enabled: true },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: '#111827',
+                        titleFont: { size: 12, weight: 'bold', family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+                        bodyFont: { size: 11, family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        padding: { top: 8, bottom: 8, left: 10, right: 10 },
+                        cornerRadius: 4,
+                        displayColors: false, /* Hide default color swatch box to mirror Assets Screener */
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                if (!tooltipItems.length) return '';
+                                const date = new Date(tooltipItems[0].parsed.x);
+                                const dateStr = date.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                });
+                                return `${dateStr}, 9:00:00 a.m.`;
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                const val = context.parsed.y !== null ? context.parsed.y.toFixed(3) : '-';
+                                return `\u25A0 ${label}: ${val}`;
+                            }
+                        }
+                    },
                     /* Thin reference lines at the same High Sync (0.75) / Moderate (0.45)
                        boundaries used by the NSI KPI card, so the band is visible on the chart too. */
                     thresholdLines: { lines: [0.75, 0.45] }
@@ -578,9 +639,6 @@
                             display: true,
                             color: '#f1f5f9'
                         }
-                        /* Removed afterBuildTicks tick-copying hack: both charts now use the same
-                           autoSkip/maxRotation tick config directly, so their gridlines line up
-                           without one chart overwriting the other's computed ticks. */
                     },
                     y: {
                         position: 'right',
