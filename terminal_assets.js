@@ -229,7 +229,7 @@
             paginationPageSizeSelector: [25, 50, 100, 200],
             suppressCellFocus: true,
             suppressRowClickSelection: true,
-            defaultColDef: { resizable: true, sortable: true, filter: true },
+            defaultColDef: { resizable: true, sortable: true, filter: true, suppressDragLeaveHidesColumns: true, suppressMovable: true},
             rowClassRules: {
                 'ag-row-selected-ticker': (params) => params.data && params.data.ticker === selectedTicker
             },
