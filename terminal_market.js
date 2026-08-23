@@ -704,13 +704,23 @@
         else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
         else startDate = new Date(rawMarketData[0].x);
 
-        filteredMarketData = rawMarketData.filter(d => d.x >= startDate.getTime());
+        renderMainChart(rawMarketData);
+        renderNSIChart(rawMarketData);
 
-        renderMainChart(filteredMarketData);
-        renderNSIChart(filteredMarketData);
+        const viewMin = Math.max(startDate.getTime(), rawMarketData[0].x);
+
+        if (mainChartInstance) {
+            mainChartInstance.options.scales.x.min = viewMin;
+            mainChartInstance.update();
+        }
+
+        if (nsiChartInstance) {
+            nsiChartInstance.options.scales.x.min = viewMin;
+            nsiChartInstance.update();
+        }
 
         if (gridApi) {
-            gridApi.setGridOption('rowData', filteredMarketData);
+            gridApi.setGridOption('rowData', rawMarketData);
         }
     };
 
