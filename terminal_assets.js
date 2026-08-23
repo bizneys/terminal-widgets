@@ -706,7 +706,9 @@ function buildSubDatasets(data, tab) {
         ];
     }
     return [
-        { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0, fill: true, backgroundColor: 'rgba(5, 150, 105, 0.06)' }
+        { label: '-2σ Limit', data: data.map(d => ({ x: d.x, y: -2 })), pointRadius: 0, borderWidth: 0 },
+        { label: '+2σ Band', data: data.map(d => ({ x: d.x, y: 2 })), pointRadius: 0, borderWidth: 0, fill: '-1', backgroundColor: 'rgba(16, 185, 129, 0.08)' },
+        { label: 'Narrative Premium', data: data.map(d => ({ x: d.x, y: d.narrative_premium })), borderColor: '#059669', borderWidth: 1.2, pointRadius: 0 }
     ];
 }
 
