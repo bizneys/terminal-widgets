@@ -208,7 +208,7 @@
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
-            defaultColDef: { resizable: true, sortable: true, filter: true },
+            defaultColDef: { resizable: true, sortable: true, filter: true, suppressDragLeaveHidesColumns: true, suppressMovable: true},
             onGridReady: (params) => {
                 gridApi = params.api;
                 gridApi.sizeColumnsToFit();
