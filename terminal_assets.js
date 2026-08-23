@@ -68,7 +68,7 @@
             ctx.fillStyle = 'rgba(15, 23, 42, 0.18)';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
-            ctx.fillText('BIZNEYS \u00B7 bizneys.com', chartArea.right, chartArea.bottom - 4);
+            ctx.fillText('BIZNEYS \u00B7 bizneys.com', chartArea.right - 4, chartArea.bottom - 4);
             ctx.restore();
         }
     };
