@@ -700,7 +700,7 @@ function buildSubDatasets(data, tab) {
             { 
                 label: 'α Alpha (%)', 
                 data: data.map(d => ({ x: d.x, y: d.alpha != null ? d.alpha * 100 : null })), 
-                borderColor: '#2563eb', 
+                borderColor: '#475569', 
                 borderWidth: 1.2, 
                 pointRadius: 0, 
                 fill: {
