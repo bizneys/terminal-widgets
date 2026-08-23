@@ -482,7 +482,7 @@
                 },
                 plugins: {
                     legend: { display: false },
-                    tooltip: { enabled: false },
+                    tooltip: { enabled: true },
                     brandWatermark: { enabled: true } /* Only stamped on the main chart to avoid visual clutter */
                 },
                 scales: {
@@ -559,7 +559,7 @@
                 },
                 plugins: {
                     legend: { display: false },
-                    tooltip: { enabled: false },
+                    tooltip: { enabled: true },
                     /* Thin reference lines at the same High Sync (0.75) / Moderate (0.45)
                        boundaries used by the NSI KPI card, so the band is visible on the chart too. */
                     thresholdLines: { lines: [0.75, 0.45] }
