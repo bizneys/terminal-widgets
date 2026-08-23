@@ -623,7 +623,7 @@ function renderAssetMainChart(data) {
                 { 
                     label: 'Adj Close', 
                     data: data.map(d => ({ x: d.x, y: d.adj_close })), 
-                    borderColor: '#1e293b',
+                    borderColor: '#2563eb',
                     borderWidth: 2.5,
                     pointRadius: 0,
                     order: 1
@@ -631,7 +631,7 @@ function renderAssetMainChart(data) {
                 { 
                     label: 'MA20', 
                     data: data.map(d => ({ x: d.x, y: d.ma20 })), 
-                    borderColor: 'rgba(245, 158, 11, 0.85)',
+                    borderColor: '#f59e0b',
                     borderWidth: 1.2, 
                     pointRadius: 0,
                     order: 2 
@@ -639,7 +639,7 @@ function renderAssetMainChart(data) {
                 { 
                     label: 'MA50', 
                     data: data.map(d => ({ x: d.x, y: d.ma50 })), 
-                    borderColor: 'rgba(236, 72, 153, 0.85)',
+                    borderColor: '#d946ef',
                     borderWidth: 1.2, 
                     pointRadius: 0,
                     order: 3 
@@ -647,7 +647,7 @@ function renderAssetMainChart(data) {
                 { 
                     label: 'MA200', 
                     data: data.map(d => ({ x: d.x, y: d.ma200 })), 
-                    borderColor: 'rgba(2, 132, 199, 0.85)',
+                    borderColor: '#0284c7',
                     borderWidth: 1.2, 
                     pointRadius: 0,
                     order: 4 
