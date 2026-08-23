@@ -85,28 +85,24 @@
     });
 
     /* ============================================================
-     * PNG Snapshot Export (main + sub chart stacked into one image)
+     * PNG Snapshot Export (Capturing Entire Chart Container)
      * ============================================================ */
     window.downloadChartSnapshot = function() {
-        const mainCanvas = document.getElementById('mainCanvas');
-        const subCanvas = document.getElementById('nsiCanvas');
-        if (!mainCanvas || !subCanvas) return;
+        const container = document.getElementById('chartBoxContainer');
+        if (!container || typeof html2canvas === 'undefined') return;
 
-        const gap = 16;
-        const composite = document.createElement('canvas');
-        composite.width = mainCanvas.width;
-        composite.height = mainCanvas.height + subCanvas.height + gap;
-
-        const ctx = composite.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, composite.width, composite.height);
-        ctx.drawImage(mainCanvas, 0, 0);
-        ctx.drawImage(subCanvas, 0, mainCanvas.height + gap);
-
-        const link = document.createElement('a');
-        link.download = 'bizneys_market_snapshot.png';
-        link.href = composite.toDataURL('image/png');
-        link.click();
+        html2canvas(container, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'bizneys_market_snapshot.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }).catch(err => {
+            console.error("Snapshot export failed:", err);
+        });
     };
 
     /* Initialize draggable split layout for Desktop screens */
