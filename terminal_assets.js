@@ -18,6 +18,8 @@
     let selectedName = null;
     let assetRawSeries = [];       /* Full time-series for the selected ticker */
     let assetFilteredSeries = [];  /* Range-filtered slice currently rendered */
+    
+    const timeseriesCache = new Map();
 
     let assetMainChartInstance = null;
     let assetSubChartInstance = null;
@@ -291,6 +293,8 @@
      * ============================================================ */
 
     function selectAsset(ticker, name) {
+        if (selectedTicker === ticker && assetRawSeries.length > 0) return;
+
         selectedTicker = ticker;
         selectedName = name;
 
@@ -322,26 +326,36 @@
     }
 
     function loadAssetTimeseries(ticker) {
+        const processAndRender = (data) => {
+            if (!data || data.length === 0) {
+                document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
+                return;
+            }
+
+            assetRawSeries = data
+                .map(d => ({ ...d, x: typeof d.x === 'number' ? d.x : new Date(d.date).getTime() }))
+                .sort((a, b) => a.x - b.x);
+
+            attachMovingAverages(assetRawSeries);
+            assetFilteredSeries = [...assetRawSeries];
+
+            document.getElementById('chartPanelLoading').style.display = 'none';
+            document.getElementById('chartPanelContent').style.display = 'block';
+
+            renderAssetMainChart(assetFilteredSeries);
+            renderAssetSubChart(assetFilteredSeries, currentSubTab);
+        };
+
+        if (timeseriesCache.has(ticker)) {
+            processAndRender(timeseriesCache.get(ticker));
+            return;
+        }
+
         fetch(API_TIMESERIES_URL + encodeURIComponent(ticker))
             .then(res => res.json())
             .then(data => {
-                if (!data || data.length === 0) {
-                    document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
-                    return;
-                }
-
-                assetRawSeries = data
-                    .map(d => ({ ...d, x: new Date(d.date).getTime() }))
-                    .sort((a, b) => a.x - b.x);
-
-                attachMovingAverages(assetRawSeries);
-                assetFilteredSeries = [...assetRawSeries];
-
-                document.getElementById('chartPanelLoading').style.display = 'none';
-                document.getElementById('chartPanelContent').style.display = 'block';
-
-                renderAssetMainChart(assetFilteredSeries);
-                renderAssetSubChart(assetFilteredSeries, currentSubTab);
+                timeseriesCache.set(ticker, data);
+                processAndRender(data);
             })
             .catch(err => {
                 console.error("Error loading asset timeseries:", err);
