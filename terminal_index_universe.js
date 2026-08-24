@@ -204,7 +204,7 @@
             ],
             rowData: initialData,
             pagination: true,
-            paginationPageSize: 15,
+            paginationPageSize: 100,
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
