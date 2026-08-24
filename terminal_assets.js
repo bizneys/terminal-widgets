@@ -908,17 +908,41 @@ window.setAssetTimeRange = function(range, btnElem) {
     document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
 
-    /* 1. Return if the full raw dataset does not exist */
-    if (!assetRawSeries || !assetRawSeries.length) return;
+    if (!assetRawSeries || !assetRawSeries.length || !assetMainChartInstance) return;
 
-    /* 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset */
     if (assetMainChartInstance.data.datasets[0].data.length !== assetRawSeries.length) {
         assetMainChartInstance.data.datasets[0].data = assetRawSeries.map(d => ({ x: d.x, y: d.adj_close }));
-        /* Reassign full dataset to the sub chart as well */
+        assetMainChartInstance.data.datasets[1].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma20 }));
+        assetMainChartInstance.data.datasets[2].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma50 }));
+        assetMainChartInstance.data.datasets[3].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma200 }));
+        
         if (assetSubChartInstance) {
             assetSubChartInstance.data.datasets = buildSubDatasets(assetRawSeries, currentSubTab);
         }
     }
+
+    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
+    const latestDate = new Date(maxTimestamp);
+    let startDate = new Date(latestDate);
+
+    if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
+    else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
+    else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
+    else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
+    else startDate = new Date(assetRawSeries[0].x);
+
+    const minTimestamp = (range === 'ALL') ? assetRawSeries[0].x : startDate.getTime();
+
+    assetMainChartInstance.options.scales.x.min = minTimestamp;
+    assetMainChartInstance.options.scales.x.max = maxTimestamp;
+    assetMainChartInstance.update('none');
+
+    if (assetSubChartInstance) {
+        assetSubChartInstance.options.scales.x.min = minTimestamp;
+        assetSubChartInstance.options.scales.x.max = maxTimestamp;
+        assetSubChartInstance.update('none');
+    }
+};
 
     /* 3. Calculate start time (minTimestamp) to display based on the latest date */
     const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
