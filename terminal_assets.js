@@ -686,13 +686,17 @@ window.toggleMA = function(index) {
 };
 
 /* ---- Sub Panel: Premium / Exposures / Alpha / Volume (tab-switchable) ---- */
+
+/* State tracking for exposures (β) visibility: [SC, AH, H, F] */
+let isBetaVisible = [true, true, true, true];
+
 function buildSubDatasets(data, tab) {
     if (tab === 'exposures') {
         return [
-            { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0 },
-            { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0 }
+            { label: '\u03B2 SC', data: data.map(d => ({ x: d.x, y: d.beta_sc })), borderColor: '#dc2626', borderWidth: 1.2, pointRadius: 0, hidden: !isBetaVisible[0] },
+            { label: '\u03B2 AH', data: data.map(d => ({ x: d.x, y: d.beta_ah })), borderColor: '#06b6d4', borderWidth: 1.2, pointRadius: 0, hidden: !isBetaVisible[1] },
+            { label: '\u03B2 H', data: data.map(d => ({ x: d.x, y: d.beta_h })), borderColor: '#ea580c', borderWidth: 1.2, pointRadius: 0, hidden: !isBetaVisible[2] },
+            { label: '\u03B2 F', data: data.map(d => ({ x: d.x, y: d.beta_f })), borderColor: '#64748b', borderWidth: 1.2, pointRadius: 0, hidden: !isBetaVisible[3] }
         ];
     }
     if (tab === 'alpha') {
@@ -745,12 +749,14 @@ function thresholdsForTab(tab) {
 
 function renderSubTabLegend(tab) {
     const legendEl = document.getElementById('subTabLegend');
+    if (!legendEl) return;
+
     if (tab === 'exposures') {
         legendEl.innerHTML = `
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
-            <span class="check-label" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
+            <span class="check-label ${isBetaVisible[0] ? 'active' : 'inactive'}" onclick="toggleBeta(0)" style="cursor:pointer;" title="${NARRATIVE_FACTOR_NAMES.SC}"><span class="color-dot dot-sc"></span>SC</span>
+            <span class="check-label ${isBetaVisible[1] ? 'active' : 'inactive'}" onclick="toggleBeta(1)" style="cursor:pointer;" title="${NARRATIVE_FACTOR_NAMES.AH}"><span class="color-dot dot-ah"></span>AH</span>
+            <span class="check-label ${isBetaVisible[2] ? 'active' : 'inactive'}" onclick="toggleBeta(2)" style="cursor:pointer;" title="${NARRATIVE_FACTOR_NAMES.H}"><span class="color-dot dot-h"></span>H</span>
+            <span class="check-label ${isBetaVisible[3] ? 'active' : 'inactive'}" onclick="toggleBeta(3)" style="cursor:pointer;" title="${NARRATIVE_FACTOR_NAMES.F}"><span class="color-dot dot-f"></span>F</span>
         `;
     } else if (tab === 'premium') {
         legendEl.innerHTML = `<span class="check-label" title="Z-score normalized (mean 0, std 2)">&plusmn;2&sigma; band</span>`;
@@ -760,6 +766,21 @@ function renderSubTabLegend(tab) {
         legendEl.innerHTML = '';
     }
 }
+
+/* Toggle visibility for exposures (β) datasets */
+window.toggleBeta = function(index) {
+    if (!assetSubChartInstance || currentSubTab !== 'exposures') return;
+
+    isBetaVisible[index] = !isBetaVisible[index];
+
+    if (isBetaVisible[index]) {
+        assetSubChartInstance.show(index);
+    } else {
+        assetSubChartInstance.hide(index);
+    }
+
+    renderSubTabLegend('exposures');
+};
 
 function renderAssetSubChart(data, tab) {
     const ctx = document.getElementById('assetSubCanvas').getContext('2d');
