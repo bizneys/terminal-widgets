@@ -985,8 +985,6 @@ window.setAssetTimeRange = function(range, btnElem) {
     }
 };
 
-if (document.readyState === 'loading') {
-    document.addEventListener("DOMContentLoaded", initScreener);
-} else {
-    initScreener();
-}
+document.addEventListener("DOMContentLoaded", initScreener);
+initScreener();
+})();
