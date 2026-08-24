@@ -18,8 +18,6 @@
     let selectedName = null;
     let assetRawSeries = [];       /* Full time-series for the selected ticker */
     let assetFilteredSeries = [];  /* Range-filtered slice currently rendered */
-    
-    const timeseriesCache = new Map();
 
     let assetMainChartInstance = null;
     let assetSubChartInstance = null;
@@ -293,8 +291,6 @@
      * ============================================================ */
 
     function selectAsset(ticker, name) {
-        if (selectedTicker === ticker && assetRawSeries.length > 0) return;
-
         selectedTicker = ticker;
         selectedName = name;
 
@@ -326,36 +322,26 @@
     }
 
     function loadAssetTimeseries(ticker) {
-        const processAndRender = (data) => {
-            if (!data || data.length === 0) {
-                document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
-                return;
-            }
-
-            assetRawSeries = data
-                .map(d => ({ ...d, x: typeof d.x === 'number' ? d.x : new Date(d.date).getTime() }))
-                .sort((a, b) => a.x - b.x);
-
-            attachMovingAverages(assetRawSeries);
-            assetFilteredSeries = [...assetRawSeries];
-
-            document.getElementById('chartPanelLoading').style.display = 'none';
-            document.getElementById('chartPanelContent').style.display = 'block';
-
-            renderAssetMainChart(assetFilteredSeries);
-            renderAssetSubChart(assetFilteredSeries, currentSubTab);
-        };
-
-        if (timeseriesCache.has(ticker)) {
-            processAndRender(timeseriesCache.get(ticker));
-            return;
-        }
-
         fetch(API_TIMESERIES_URL + encodeURIComponent(ticker))
             .then(res => res.json())
             .then(data => {
-                timeseriesCache.set(ticker, data);
-                processAndRender(data);
+                if (!data || data.length === 0) {
+                    document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
+                    return;
+                }
+
+                assetRawSeries = data
+                    .map(d => ({ ...d, x: new Date(d.date).getTime() }))
+                    .sort((a, b) => a.x - b.x);
+
+                attachMovingAverages(assetRawSeries);
+                assetFilteredSeries = [...assetRawSeries];
+
+                document.getElementById('chartPanelLoading').style.display = 'none';
+                document.getElementById('chartPanelContent').style.display = 'block';
+
+                renderAssetMainChart(assetFilteredSeries);
+                renderAssetSubChart(assetFilteredSeries, currentSubTab);
             })
             .catch(err => {
                 console.error("Error loading asset timeseries:", err);
@@ -922,41 +908,17 @@ window.setAssetTimeRange = function(range, btnElem) {
     document.querySelectorAll('.range-selector .btn-range').forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
 
-    if (!assetRawSeries || !assetRawSeries.length || !assetMainChartInstance) return;
+    /* 1. Return if the full raw dataset does not exist */
+    if (!assetRawSeries || !assetRawSeries.length) return;
 
+    /* 2. Check if the full dataset is applied; if truncated data is present, restore the full dataset */
     if (assetMainChartInstance.data.datasets[0].data.length !== assetRawSeries.length) {
         assetMainChartInstance.data.datasets[0].data = assetRawSeries.map(d => ({ x: d.x, y: d.adj_close }));
-        assetMainChartInstance.data.datasets[1].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma20 }));
-        assetMainChartInstance.data.datasets[2].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma50 }));
-        assetMainChartInstance.data.datasets[3].data = assetRawSeries.map(d => ({ x: d.x, y: d.ma200 }));
-        
+        /* Reassign full dataset to the sub chart as well */
         if (assetSubChartInstance) {
             assetSubChartInstance.data.datasets = buildSubDatasets(assetRawSeries, currentSubTab);
         }
     }
-
-    const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
-    const latestDate = new Date(maxTimestamp);
-    let startDate = new Date(latestDate);
-
-    if (range === '1M') startDate.setMonth(startDate.getMonth() - 1);
-    else if (range === '3M') startDate.setMonth(startDate.getMonth() - 3);
-    else if (range === '6M') startDate.setMonth(startDate.getMonth() - 6);
-    else if (range === '1Y') startDate.setFullYear(startDate.getFullYear() - 1);
-    else startDate = new Date(assetRawSeries[0].x);
-
-    const minTimestamp = (range === 'ALL') ? assetRawSeries[0].x : startDate.getTime();
-
-    assetMainChartInstance.options.scales.x.min = minTimestamp;
-    assetMainChartInstance.options.scales.x.max = maxTimestamp;
-    assetMainChartInstance.update('none');
-
-    if (assetSubChartInstance) {
-        assetSubChartInstance.options.scales.x.min = minTimestamp;
-        assetSubChartInstance.options.scales.x.max = maxTimestamp;
-        assetSubChartInstance.update('none');
-    }
-};
 
     /* 3. Calculate start time (minTimestamp) to display based on the latest date */
     const maxTimestamp = assetRawSeries[assetRawSeries.length - 1].x;
