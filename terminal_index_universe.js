@@ -5,6 +5,14 @@
     let filteredUniverseData = [];
     let gridApi = null;
 
+    // Helper function to dynamically retrieve JWT Token from WP global variable or LocalStorage
+    function getAuthToken() {
+        if (typeof window.bizneysToken !== 'undefined' && window.bizneysToken) {
+            return window.bizneysToken;
+        }
+        return localStorage.getItem('jwt_token') || localStorage.getItem('token') || '';
+    }
+
     function checkDependenciesAndInit() {
         if (typeof agGrid !== 'undefined' && document.getElementById('indexUniverseGrid')) {
             fetchUniverseData();
@@ -14,16 +22,32 @@
     }
 
     function fetchUniverseData() {
+        const token = getAuthToken();
+        const headers = {
+            'Accept': 'application/json'
+        };
+
+        // Attach Authorization header if JWT token exists
+        if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+
         fetch(API_URL, {
             method: 'GET',
             mode: 'cors',
             cache: 'no-cache',
-            headers: {
-                'Accept': 'application/json'
-            }
+            headers: headers
         })
         .then(res => {
-            if (!res.ok) throw new Error("HTTP error! Status: " + res.status);
+            if (res.status === 401) {
+                throw new Error("UNAUTHORIZED");
+            }
+            if (res.status === 403) {
+                throw new Error("FORBIDDEN");
+            }
+            if (!res.ok) {
+                throw new Error("HTTP_ERROR_" + res.status);
+            }
             return res.json();
         })
         .then(data => {
@@ -51,8 +75,26 @@
         .catch(err => {
             console.error("Error loading Index Universe data:", err);
             const gridDiv = document.getElementById('indexUniverseGrid');
-            if (gridDiv) {
-                gridDiv.innerHTML = '<div style="padding:20px; color:#ef4444; font-size:12px;">Failed to load data. Please check CORS settings on backend.</div>';
+            if (!gridDiv) return;
+
+            // Handle 401/403 and general errors with styled notification UI
+            if (err.message === "UNAUTHORIZED") {
+                gridDiv.innerHTML = `
+                    <div style="padding:40px 20px; text-align:center; color:#e11d48; font-size:14px; font-weight:600; line-height:1.6;">
+                        🔒 Authentication required.<br>
+                        <span style="font-size:12px; font-weight:400; color:#6b7280;">Please log in to your BIZNEYS account to access this data.</span>
+                    </div>`;
+            } else if (err.message === "FORBIDDEN") {
+                gridDiv.innerHTML = `
+                    <div style="padding:40px 20px; text-align:center; color:#d97706; font-size:14px; font-weight:600; line-height:1.6;">
+                        ⭐ Pro Membership Required.<br>
+                        <span style="font-size:12px; font-weight:400; color:#6b7280;">Access denied. This endpoint is restricted to active Pro members.</span>
+                    </div>`;
+            } else {
+                gridDiv.innerHTML = `
+                    <div style="padding:20px; color:#ef4444; font-size:12px; text-align:center;">
+                        Failed to load data. Please verify network or CORS configuration.
+                    </div>`;
             }
         });
     }
@@ -102,7 +144,6 @@
         const selectedQuarter = quarterSelect ? quarterSelect.value : "ALL";
         if (quarterInfoElem) quarterInfoElem.innerText = selectedQuarter !== "ALL" ? selectedQuarter : "Multi-Quarter";
 
-        // Display equal weight and clear specific ticker text
         const sampleHolding = data[0];
         if (maxWeightElem && sampleHolding) {
             maxWeightElem.innerText = sampleHolding.weight !== undefined && sampleHolding.weight !== null ? (sampleHolding.weight * 100).toFixed(2) + "%" : "-";
