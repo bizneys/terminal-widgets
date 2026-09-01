@@ -39,11 +39,10 @@
             headers: headers
         })
         .then(res => {
-            if (res.status === 401) {
-                throw new Error("UNAUTHORIZED");
-            }
-            if (res.status === 403) {
-                throw new Error("FORBIDDEN");
+            // Handle 401 Unauthorized / 403 Forbidden access errors using direct browser alert
+            if (res.status === 401 || res.status === 403) {
+                alert('Membership access required. Please sign in or upgrade your account to view market terminal data.');
+                throw new Error(`Unauthorized access: ${res.status}`);
             }
             if (!res.ok) {
                 throw new Error("HTTP_ERROR_" + res.status);
@@ -77,25 +76,11 @@
             const gridDiv = document.getElementById('indexUniverseGrid');
             if (!gridDiv) return;
 
-            // Handle 401/403 and general errors with styled notification UI
-            if (err.message === "UNAUTHORIZED") {
-                gridDiv.innerHTML = `
-                    <div style="padding:40px 20px; text-align:center; color:#e11d48; font-size:14px; font-weight:600; line-height:1.6;">
-                        🔒 Authentication required.<br>
-                        <span style="font-size:12px; font-weight:400; color:#6b7280;">Please log in to your BIZNEYS account to access this data.</span>
-                    </div>`;
-            } else if (err.message === "FORBIDDEN") {
-                gridDiv.innerHTML = `
-                    <div style="padding:40px 20px; text-align:center; color:#d97706; font-size:14px; font-weight:600; line-height:1.6;">
-                        ⭐ Pro Membership Required.<br>
-                        <span style="font-size:12px; font-weight:400; color:#6b7280;">Access denied. This endpoint is restricted to active Pro members.</span>
-                    </div>`;
-            } else {
-                gridDiv.innerHTML = `
-                    <div style="padding:20px; color:#ef4444; font-size:12px; text-align:center;">
-                        Failed to load data. Please verify network or CORS configuration.
-                    </div>`;
-            }
+            // Render general network or server error fallback UI inside grid container
+            gridDiv.innerHTML = `
+                <div style="padding:20px; color:#ef4444; font-size:12px; text-align:center;">
+                    Failed to load data. Please verify network or CORS configuration.
+                </div>`;
         });
     }
 
