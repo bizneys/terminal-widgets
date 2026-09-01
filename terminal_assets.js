@@ -142,7 +142,7 @@
     /* ============================================================
      * Screener Grid (right pane)
      * ============================================================ */
-    function initScreener() {
+function initScreener() {
         if (typeof Chart === 'undefined' || typeof agGrid === 'undefined') {
             setTimeout(initScreener, 100);
             return;
@@ -150,8 +150,33 @@
 
         initSplitLayout();
 
-        fetch(API_LATEST_URL)
-            .then(res => res.json())
+        /* Retrieve JWT Token stored in localStorage (or global scope) */
+        const token = localStorage.getItem('jwt_token') || window.bizneysToken;
+
+        /* Build Authorization Headers */
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        fetch(API_LATEST_URL, {
+            method: 'GET',
+            headers: headers
+        })
+            .then(res => {
+                /* Handle 401 Unauthorized / 403 Forbidden Access Errors */
+                if (res.status === 401 || res.status === 403) {
+                    alert('Membership access required. Please sign in or upgrade your account to view market terminal data.');
+                    throw new Error(`Unauthorized access: ${res.status}`);
+                }
+                if (!res.ok) {
+                    throw new Error(`HTTP error! Status: ${res.status}`);
+                }
+                return res.json();
+            })
             .then(data => {
                 assetSnapshotData = data || [];
                 assetSnapshotData.sort((a, b) => (a.ticker || '').localeCompare(b.ticker || ''));
@@ -322,31 +347,49 @@
     }
 
     function loadAssetTimeseries(ticker) {
-        fetch(API_TIMESERIES_URL + encodeURIComponent(ticker))
-            .then(res => res.json())
+        const token = localStorage.getItem('jwt_token') || window.bizneysToken;
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        fetch(API_TIMESERIES_URL + encodeURIComponent(ticker), {
+            method: 'GET',
+            headers: headers
+        })
+            .then(res => {
+                if (res.status === 401 || res.status === 403) {
+                    alert('Membership access required. Please sign in or upgrade your account to view market terminal data.');
+                    throw new Error(`Unauthorized access: ${res.status}`);
+                }
+                if (!res.ok) {
+                    throw new Error(`HTTP error! Status: ${res.status}`);
+                }
+                return res.json();
+            })
             .then(data => {
                 if (!data || data.length === 0) {
                     document.getElementById('chartPanelLoading').innerText = "No data available for this ticker.";
                     return;
-                }
+    }
 
-                assetRawSeries = data
-                    .map(d => ({ ...d, x: new Date(d.date).getTime() }))
-                    .sort((a, b) => a.x - b.x);
+            assetRawSeries = data
+                .map(d => ({ ...d, x: new Date(d.date).getTime() }))
+                .sort((a, b) => a.x - b.x);
 
-                attachMovingAverages(assetRawSeries);
-                assetFilteredSeries = [...assetRawSeries];
+            attachMovingAverages(assetRawSeries);
+            assetFilteredSeries = [...assetRawSeries];
 
-                document.getElementById('chartPanelLoading').style.display = 'none';
-                document.getElementById('chartPanelContent').style.display = 'block';
+            document.getElementById('chartPanelLoading').style.display = 'none';
+            document.getElementById('chartPanelContent').style.display = 'block';
 
-                renderAssetMainChart(assetFilteredSeries);
-                renderAssetSubChart(assetFilteredSeries, currentSubTab);
-            })
-            .catch(err => {
-                console.error("Error loading asset timeseries:", err);
-                document.getElementById('chartPanelLoading').innerText = "Failed to load time-series.";
-            });
+            renderAssetMainChart(assetFilteredSeries);
+            renderAssetSubChart(assetFilteredSeries, currentSubTab);
+        })
+        .catch(err => {
+            console.error("Error loading asset timeseries:", err);
+            document.getElementById('chartPanelLoading').innerText = "Failed to load time-series.";
+        });
     }
 
     /* Simple moving average, computed client-side/on-demand (no server round-trip) */
