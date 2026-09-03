@@ -192,7 +192,7 @@
     function renderUniverseGrid(initialData) {
         const gridOptions = {
             columnDefs: [
-                { field: "target_quarter", headerName: "Target Qtr", flex: 1, minWidth: 105 },
+                { field: "target_quarter", headerName: "Target Qtr", sort: "desc", flex: 1, minWidth: 105 },
                 { field: "announce_date", headerName: "Announce Date", flex: 1.1, minWidth: 115 },
                 { field: "eff_date", headerName: "Effective Date", flex: 1.1, minWidth: 115 },
                 {
@@ -218,14 +218,14 @@
                     valueFormatter: p => p.value !== null && p.value !== undefined ? (p.value * 100).toFixed(2) + "%" : "-",
                     flex: 1,
                     minWidth: 90,
-                    cellStyle: { textAlign: 'right' }
+                    cellStyle: { textAlign: 'left' }
                 },
                 { 
                     field: "adtv_rank", 
                     headerName: "ADTV Rank", 
                     flex: 1, 
                     minWidth: 95, 
-                    cellStyle: { textAlign: 'right' }
+                    cellStyle: { textAlign: 'left' }
                 },
                 {
                     field: "rebalance_adtv_63",
@@ -233,7 +233,7 @@
                     valueFormatter: p => p.value ? formatNumberCompact(p.value) : "-",
                     flex: 1.2,
                     minWidth: 105,
-                    cellStyle: { textAlign: 'right' }
+                    cellStyle: { textAlign: 'left' }
                 }
             ],
             rowData: initialData,
