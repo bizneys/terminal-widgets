@@ -218,16 +218,25 @@
                     valueFormatter: p => p.value !== null && p.value !== undefined ? (p.value * 100).toFixed(2) + "%" : "-",
                     flex: 1,
                     minWidth: 90,
-                    type: "numericColumn"
+                    type: "numericColumn",
+                    headerClass: "ag-left-aligned-header"
                 },
-                { field: "adtv_rank", headerName: "ADTV Rank", flex: 1, minWidth: 95, type: "numericColumn" },
+                { 
+                    field: "adtv_rank", 
+                    headerName: "ADTV Rank", 
+                    flex: 1, 
+                    minWidth: 95, 
+                    type: "numericColumn",
+                    headerClass: "ag-left-aligned-header"
+                },
                 {
                     field: "rebalance_adtv_63",
                     headerName: "ADTV 63D",
                     valueFormatter: p => p.value ? formatNumberCompact(p.value) : "-",
                     flex: 1.2,
                     minWidth: 105,
-                    type: "numericColumn"
+                    type: "numericColumn",
+                    headerClass: "ag-left-aligned-header"
                 }
             ],
             rowData: initialData,
@@ -236,6 +245,7 @@
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
+            unSortIcon: false,
             defaultColDef: { 
                 resizable: true, 
                 sortable: true, 
