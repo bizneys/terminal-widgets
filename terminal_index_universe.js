@@ -193,6 +193,8 @@
         const gridOptions = {
             columnDefs: [
                 { field: "target_quarter", headerName: "Target Qtr", sort: "desc", flex: 1, minWidth: 100 },
+                { field: "announce_date", headerName: "Announce Date", flex: 1.1, minWidth: 110 },
+                { field: "eff_date", headerName: "Effective Date", flex: 1.1, minWidth: 110 },
                 {
                     field: "narrative_factor",
                     headerName: "Factor",
@@ -209,22 +211,22 @@
                     }
                 },
                 { field: "ticker", headerName: "Ticker", flex: 1, minWidth: 90, cellStyle: { fontWeight: '600', color: '#4338ca' } },
-                { field: "name", headerName: "Company Name", flex: 3, minWidth: 200 },
+                { field: "name", headerName: "Company Name", flex: 2.5, minWidth: 180 },
                 {
                     field: "weight",
                     headerName: "Weight",
                     valueFormatter: p => p.value !== null && p.value !== undefined ? (p.value * 100).toFixed(2) + "%" : "-",
-                    flex: 1.2,
-                    minWidth: 100,
+                    flex: 1,
+                    minWidth: 90,
                     type: "numericColumn"
                 },
-                { field: "adtv_rank", headerName: "ADTV Rank", flex: 1.2, minWidth: 100, type: "numericColumn" },
+                { field: "adtv_rank", headerName: "ADTV Rank", flex: 1, minWidth: 95, type: "numericColumn" },
                 {
                     field: "rebalance_adtv_63",
                     headerName: "ADTV 63D",
                     valueFormatter: p => p.value ? formatNumberCompact(p.value) : "-",
-                    flex: 1.5,
-                    minWidth: 120,
+                    flex: 1.2,
+                    minWidth: 105,
                     type: "numericColumn"
                 }
             ],
@@ -234,7 +236,16 @@
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
-            defaultColDef: { resizable: true, sortable: true, filter: true, suppressDragLeaveHidesColumns: true, suppressMovable: true},
+            // Standardized header layout (Aligns filter/sort icons consistently to the right side and eliminates duplicates)
+            unSortIcon: true,
+            defaultColDef: { 
+                resizable: true, 
+                sortable: true, 
+                filter: true, 
+                suppressDragLeaveHidesColumns: true, 
+                suppressMovable: true,
+                headerClass: 'ag-header-cell-align-right'
+            },
             onGridReady: (params) => {
                 gridApi = params.api;
                 gridApi.sizeColumnsToFit();
