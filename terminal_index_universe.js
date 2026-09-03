@@ -192,9 +192,9 @@
     function renderUniverseGrid(initialData) {
         const gridOptions = {
             columnDefs: [
-                { field: "target_quarter", headerName: "Target Qtr", sort: "desc", flex: 1, minWidth: 100 },
-                { field: "announce_date", headerName: "Announce Date", flex: 1.1, minWidth: 110 },
-                { field: "eff_date", headerName: "Effective Date", flex: 1.1, minWidth: 110 },
+                { field: "target_quarter", headerName: "Target Qtr", sort: "desc", flex: 1, minWidth: 105 },
+                { field: "announce_date", headerName: "Announce Date", flex: 1.1, minWidth: 115 },
+                { field: "eff_date", headerName: "Effective Date", flex: 1.1, minWidth: 115 },
                 {
                     field: "narrative_factor",
                     headerName: "Factor",
@@ -211,7 +211,7 @@
                     }
                 },
                 { field: "ticker", headerName: "Ticker", flex: 1, minWidth: 90, cellStyle: { fontWeight: '600', color: '#4338ca' } },
-                { field: "name", headerName: "Company Name", flex: 2.5, minWidth: 180 },
+                { field: "name", headerName: "Company Name", flex: 2.2, minWidth: 170 },
                 {
                     field: "weight",
                     headerName: "Weight",
@@ -236,15 +236,15 @@
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
-            // Standardized header layout (Aligns filter/sort icons consistently to the right side and eliminates duplicates)
-            unSortIcon: true,
+            // Clean & unified header icons configuration
+            unSortIcon: false,
+            suppressMenuHide: true,
             defaultColDef: { 
                 resizable: true, 
                 sortable: true, 
-                filter: true, 
+                filter: false, // Disables duplicate in-header filter icons (filters are already handled by top UI controls)
                 suppressDragLeaveHidesColumns: true, 
-                suppressMovable: true,
-                headerClass: 'ag-header-cell-align-right'
+                suppressMovable: true
             },
             onGridReady: (params) => {
                 gridApi = params.api;
