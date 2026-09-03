@@ -236,13 +236,10 @@
             suppressHorizontalScroll: true,
             suppressCellFocus: true,
             suppressRowClickSelection: true,
-            // Clean & unified header icons configuration
-            unSortIcon: false,
-            suppressMenuHide: true,
             defaultColDef: { 
                 resizable: true, 
                 sortable: true, 
-                filter: false, // Disables duplicate in-header filter icons (filters are already handled by top UI controls)
+                filter: true, 
                 suppressDragLeaveHidesColumns: true, 
                 suppressMovable: true
             },
