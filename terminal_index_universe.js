@@ -192,7 +192,7 @@
     function renderUniverseGrid(initialData) {
         const gridOptions = {
             columnDefs: [
-                { field: "target_quarter", headerName: "Target Qtr", sort: "desc", flex: 1, minWidth: 105 },
+                { field: "target_quarter", headerName: "Target Qtr", flex: 1, minWidth: 105 },
                 { field: "announce_date", headerName: "Announce Date", flex: 1.1, minWidth: 115 },
                 { field: "eff_date", headerName: "Effective Date", flex: 1.1, minWidth: 115 },
                 {
@@ -218,16 +218,14 @@
                     valueFormatter: p => p.value !== null && p.value !== undefined ? (p.value * 100).toFixed(2) + "%" : "-",
                     flex: 1,
                     minWidth: 90,
-                    type: "numericColumn",
-                    headerClass: "ag-left-aligned-header"
+                    cellStyle: { textAlign: 'right' }
                 },
                 { 
                     field: "adtv_rank", 
                     headerName: "ADTV Rank", 
                     flex: 1, 
                     minWidth: 95, 
-                    type: "numericColumn",
-                    headerClass: "ag-left-aligned-header"
+                    cellStyle: { textAlign: 'right' }
                 },
                 {
                     field: "rebalance_adtv_63",
@@ -235,8 +233,7 @@
                     valueFormatter: p => p.value ? formatNumberCompact(p.value) : "-",
                     flex: 1.2,
                     minWidth: 105,
-                    type: "numericColumn",
-                    headerClass: "ag-left-aligned-header"
+                    cellStyle: { textAlign: 'right' }
                 }
             ],
             rowData: initialData,
@@ -246,6 +243,10 @@
             suppressCellFocus: true,
             suppressRowClickSelection: true,
             unSortIcon: false,
+            icons: {
+                sortAscending: '<span></span>',
+                sortDescending: '<span></span>'
+            },
             defaultColDef: { 
                 resizable: true, 
                 sortable: true, 
