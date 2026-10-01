@@ -649,9 +649,14 @@ function initTerminal() {
             /* No thresholds yet -- unlike NSI's 0.75/0.45 bands, no reference-level
                convention has been set for NPD. Add values here if/when one is. */
             thresholds: [],
-            /* No fixed max: NPD^sf is not bounded to [0,1] like NSI, so let Chart.js
-               auto-scale to the data's own range. */
-            yScale: { min: 0 }
+            /* No fixed min or max: unlike NSI (a true 0-1 index that genuinely swings
+               across that whole range), NPD^sf typically sits well above 0 (its
+               theoretical floor under pure noise is ~0.674, not 0). Forcing min:0
+               here would leave the bottom of the panel empty and squeeze the real
+               data into a thin band at the top -- let Chart.js auto-fit both ends
+               to the data's own range instead, same as it already does for the
+               main price chart. */
+            yScale: {}
         }
     };
 
@@ -777,7 +782,14 @@ function initTerminal() {
                 const cfg = SUB_TAB_CONFIG[currentSubTab] || SUB_TAB_CONFIG.nsi;
                 subChartInstance.options.scales.x.min = minTimestamp;
                 subChartInstance.options.scales.x.max = maxTimestamp;
-                subChartInstance.options.scales.y.min = cfg.yScale.min;
+                /* Explicitly delete (rather than set to undefined) so a tab with no
+                   fixed min/max (NPD) truly falls back to Chart.js auto-fit, the
+                   same behavior renderSubChart gives it on a fresh render. */
+                if (cfg.yScale.min === undefined) {
+                    delete subChartInstance.options.scales.y.min;
+                } else {
+                    subChartInstance.options.scales.y.min = cfg.yScale.min;
+                }
                 if (cfg.yScale.max === undefined) {
                     delete subChartInstance.options.scales.y.max;
                 } else {
