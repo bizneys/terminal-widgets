@@ -1,12 +1,29 @@
 (function() {
     const API_URL = "https://bizneys.com/api/v1/market";
 
+    /* ============================================================
+     * NOTE: this file expects these HTML/CSS changes (given next):
+     *   - #nsiCanvas renamed to #subCanvas (now shared by both tabs)
+     *   - the static ".sub-chart-title" text becomes a
+     *     #subChartTitle element whose text this file updates per tab
+     *   - two tab buttons calling setMarketSubTab('nsi'|'npd', this),
+     *     same pattern as assets.js's .btn-tab / data-tab
+     *   - #kpi-npd-val / #kpi-npd-chg KPI card (value + % change,
+     *     same pattern as the existing COMPOSITE/SC/AH/H/F cards --
+     *     no tier/status badge like NSI's "High Sync" since no such
+     *     convention has been set for NPD yet)
+     * Until that markup exists, the getElementById/getContext lookups
+     * below fail safe (no-op), so this file is safe to ship ahead of
+     * the HTML/CSS update.
+     * ============================================================ */
+
     let rawMarketData = [];
     let filteredMarketData = [];
     let mainChartInstance = null;
-    let nsiChartInstance = null;
+    let subChartInstance = null;   /* shared by the NSI and NPD tabs */
     let gridApi = null;
     let isSeriesVisible = [true, true, true, true, true];
+    let currentSubTab = 'nsi';     /* 'nsi' | 'npd' */
 
     /* ============================================================
      * Custom Chart.js plugins (registered once, reused by any chart
@@ -79,7 +96,7 @@
         /* Chart/grid containers changed size; give the browser a tick to reflow before resizing */
         setTimeout(() => {
             if (mainChartInstance) mainChartInstance.resize();
-            if (nsiChartInstance) nsiChartInstance.resize();
+            if (subChartInstance) subChartInstance.resize();
             if (gridApi) gridApi.sizeColumnsToFit();
         }, 50);
     });
@@ -115,7 +132,7 @@
                 cursor: 'col-resize',
                 onDrag: () => {
                     if (mainChartInstance) mainChartInstance.resize();
-                    if (nsiChartInstance) nsiChartInstance.resize();
+                    if (subChartInstance) subChartInstance.resize();
                     if (gridApi) gridApi.sizeColumnsToFit();
                 }
             });
@@ -169,7 +186,7 @@ function initTerminal() {
 
                 updateKPICards(rawMarketData);
                 renderMainChart(filteredMarketData);
-                renderNSIChart(filteredMarketData);
+                renderSubChart(filteredMarketData, currentSubTab);
                 renderSummaryGrid(filteredMarketData);
             })
             .catch(err => console.error("Error loading terminal data:", err));
@@ -219,13 +236,30 @@ function initTerminal() {
             nsiValElem.innerText = "N/A";
             nsiStatusElem.innerText = "-";
         }
+
+        /* NPD KPI: plain value + % change, same as COMPOSITE/SC/AH/H/F above.
+           Uses npd_sf (scale-free), the same series the NPD tab plots.
+           No tier/status badge yet -- unlike NSI, no threshold convention has
+           been set for NPD, so one is not invented here. */
+        const npdSfElem = document.getElementById("kpi-npd-val");
+        const npdSfChgElem = document.getElementById("kpi-npd-chg");
+        if (npdSfElem && npdSfChgElem) {
+            const npdVal = latest.npd_sf;
+            const npdPrev = prev.npd_sf;
+            npdSfElem.innerText = (npdVal !== undefined && npdVal !== null) ? npdVal.toFixed(3) : "-";
+            if (npdPrev && npdPrev !== 0 && npdVal !== undefined && npdVal !== null) {
+                const pct = ((npdVal - npdPrev) / npdPrev) * 100;
+                npdSfChgElem.innerText = (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%";
+                npdSfChgElem.className = `kpi-change ${pct >= 0 ? 'up' : 'down'}`;
+            }
+        }
     }
 
     function syncSubChartZoom(min, max) {
-        if (nsiChartInstance && nsiChartInstance.scales.x) {
-            nsiChartInstance.options.scales.x.min = min;
-            nsiChartInstance.options.scales.x.max = max;
-            nsiChartInstance.update('none');
+        if (subChartInstance && subChartInstance.scales.x) {
+            subChartInstance.options.scales.x.min = min;
+            subChartInstance.options.scales.x.max = max;
+            subChartInstance.update('none');
         }
     }
 
@@ -544,10 +578,10 @@ function initTerminal() {
                         min: minTimestamp,
                         max: maxTimestamp,
                         ticks: {
-                            /* Use the same font size as the NSI chart's ticks so autoSkip measures
+                            /* Use the same font size as the sub-chart's ticks so autoSkip measures
                                label width identically and produces the same tick spacing. Using
                                display:false here would skip label-width measurement entirely and
-                               pack in far more gridlines than the NSI chart below. Making the
+                               pack in far more gridlines than the sub-chart below. Making the
                                labels transparent keeps the spacing in sync while staying invisible. */
                             color: 'transparent',
                             font: { size: 9 },
@@ -582,26 +616,62 @@ function initTerminal() {
         attachChartDragInteractions('mainCanvas', () => mainChartInstance);
     }
 
-    function renderNSIChart(data) {
-        const ctx = document.getElementById('nsiCanvas').getContext('2d');
-        if (nsiChartInstance) nsiChartInstance.destroy();
+    /* ---- Sub Panel: NSI / NPD (tab-switchable, one shared canvas) ---- */
+
+    const SUB_TAB_CONFIG = {
+        nsi: {
+            title: 'Narrative Synchronization Index (NSI)',
+            buildDataset: (data) => ({
+                label: 'NSI',
+                data: data.map(d => ({ x: d.x, y: d.nsi_standardized })),
+                borderColor: '#059669',
+                borderWidth: 1.2,
+                fill: true,
+                backgroundColor: 'rgba(5, 150, 105, 0.06)',
+                pointRadius: 0
+            }),
+            /* Thin reference lines at the same High Sync (0.75) / Moderate (0.45)
+               boundaries used by the NSI KPI card, so the band is visible on the chart too. */
+            thresholds: [0.75, 0.45],
+            yScale: { min: 0, max: 1, stepSize: 0.5 }
+        },
+        npd: {
+            title: 'Narrative Premium Dispersion (NPD), Scale-Free',
+            buildDataset: (data) => ({
+                label: 'NPD (Scale-Free)',
+                data: data.map(d => ({ x: d.x, y: d.npd_sf })),
+                borderColor: '#9333ea',
+                borderWidth: 1.2,
+                fill: true,
+                backgroundColor: 'rgba(147, 51, 234, 0.06)',
+                pointRadius: 0
+            }),
+            /* No thresholds yet -- unlike NSI's 0.75/0.45 bands, no reference-level
+               convention has been set for NPD. Add values here if/when one is. */
+            thresholds: [],
+            /* No fixed max: NPD^sf is not bounded to [0,1] like NSI, so let Chart.js
+               auto-scale to the data's own range. */
+            yScale: { min: 0 }
+        }
+    };
+
+    function renderSubChart(data, tab) {
+        const canvas = document.getElementById('subCanvas');
+        if (!canvas) return;   // markup not deployed yet -- no-op until HTML/CSS ships
+        const ctx = canvas.getContext('2d');
+        if (subChartInstance) subChartInstance.destroy();
+
+        const cfg = SUB_TAB_CONFIG[tab] || SUB_TAB_CONFIG.nsi;
+
+        const titleElem = document.getElementById('subChartTitle');
+        if (titleElem) titleElem.innerText = cfg.title;
 
         const minTimestamp = data[0].x;
         const maxTimestamp = data[data.length - 1].x;
 
-        nsiChartInstance = new Chart(ctx, {
+        subChartInstance = new Chart(ctx, {
             type: 'line',
-            data: {
-                datasets: [{
-                    label: 'NSI',
-                    data: data.map(d => ({ x: d.x, y: d.nsi_standardized })),
-                    borderColor: '#059669',
-                    borderWidth: 1.2,
-                    fill: true,
-                    backgroundColor: 'rgba(5, 150, 105, 0.06)',
-                    pointRadius: 0
-                }]
-            },
+            data: { datasets: [cfg.buildDataset(data)] },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -642,9 +712,7 @@ function initTerminal() {
                             }
                         }
                     },
-                    /* Thin reference lines at the same High Sync (0.75) / Moderate (0.45)
-                       boundaries used by the NSI KPI card, so the band is visible on the chart too. */
-                    thresholdLines: { lines: [0.75, 0.45] }
+                    thresholdLines: { lines: cfg.thresholds }
                 },
                 scales: {
                     x: {
@@ -663,18 +731,36 @@ function initTerminal() {
                     },
                     y: {
                         position: 'right',
-                        min: 0,
-                        max: 1,
+                        min: cfg.yScale.min,
+                        max: cfg.yScale.max,
                         grid: { display: true, color: '#f1f5f9' },
-                        ticks: { font: { size: 8 }, stepSize: 0.5 },
+                        ticks: { font: { size: 8 }, stepSize: cfg.yScale.stepSize },
                         afterFit: (axis) => { axis.width = 55; }
                     }
                 }
             }
         });
 
-        attachChartDragInteractions('nsiCanvas', () => nsiChartInstance);
+        attachChartDragInteractions('subCanvas', () => subChartInstance);
     }
+
+    /* Tab click handler, mirrors assets.js's setAssetSubTab: switches which
+       series the shared sub-canvas plots, preserving the current x-zoom
+       range (falls back to the full range when no chart is mounted yet). */
+    window.setMarketSubTab = function(tab, btnElem) {
+        if (!SUB_TAB_CONFIG[tab]) return;
+        currentSubTab = tab;
+
+        document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+        if (btnElem) btnElem.classList.add('active');
+
+        if (!rawMarketData.length) return;
+        renderSubChart(rawMarketData, tab);
+
+        if (mainChartInstance && mainChartInstance.scales.x) {
+            syncSubChartZoom(mainChartInstance.scales.x.min, mainChartInstance.scales.x.max);
+        }
+    };
 
     window.resetChartZoom = function() {
         if (mainChartInstance && filteredMarketData.length) {
@@ -687,12 +773,17 @@ function initTerminal() {
             delete mainChartInstance.options.scales.y.max;
             mainChartInstance.update();
 
-            if (nsiChartInstance) {
-                nsiChartInstance.options.scales.x.min = minTimestamp;
-                nsiChartInstance.options.scales.x.max = maxTimestamp;
-                nsiChartInstance.options.scales.y.min = 0;
-                nsiChartInstance.options.scales.y.max = 1;
-                nsiChartInstance.update();
+            if (subChartInstance) {
+                const cfg = SUB_TAB_CONFIG[currentSubTab] || SUB_TAB_CONFIG.nsi;
+                subChartInstance.options.scales.x.min = minTimestamp;
+                subChartInstance.options.scales.x.max = maxTimestamp;
+                subChartInstance.options.scales.y.min = cfg.yScale.min;
+                if (cfg.yScale.max === undefined) {
+                    delete subChartInstance.options.scales.y.max;
+                } else {
+                    subChartInstance.options.scales.y.max = cfg.yScale.max;
+                }
+                subChartInstance.update();
             }
         }
     };
@@ -726,7 +817,7 @@ function initTerminal() {
         else startDate = new Date(rawMarketData[0].x);
 
         renderMainChart(rawMarketData);
-        renderNSIChart(rawMarketData);
+        renderSubChart(rawMarketData, currentSubTab);
 
         const viewMin = Math.max(startDate.getTime(), rawMarketData[0].x);
 
@@ -735,9 +826,9 @@ function initTerminal() {
             mainChartInstance.update();
         }
 
-        if (nsiChartInstance) {
-            nsiChartInstance.options.scales.x.min = viewMin;
-            nsiChartInstance.update();
+        if (subChartInstance) {
+            subChartInstance.options.scales.x.min = viewMin;
+            subChartInstance.update();
         }
 
         if (gridApi) {
@@ -796,6 +887,23 @@ function initTerminal() {
                     valueFormatter: p => p.value !== null ? p.value.toFixed(2) : "N/A",
                     flex: 0.8,
                     minWidth: 55
+                },
+                {
+                    field: "npd_sf",
+                    headerName: "NPD (SF)",
+                    headerTooltip: "Narrative Premium Dispersion (NPD), Scale-Free -- primary series",
+                    valueFormatter: p => p.value !== null && p.value !== undefined ? p.value.toFixed(3) : "N/A",
+                    flex: 0.8,
+                    minWidth: 65
+                },
+                {
+                    field: "npd",
+                    headerName: "NPD (Raw)",
+                    headerTooltip: "Narrative Premium Dispersion (NPD), raw / total-volatility scaled",
+                    valueFormatter: p => p.value !== null && p.value !== undefined ? p.value.toFixed(3) : "N/A",
+                    flex: 0.8,
+                    minWidth: 70,
+                    hide: true   /* available via column-visibility toggle / CSV export, hidden by default so the grid isn't crowded with two near-duplicate columns */
                 }
             ],
             rowData: data,
